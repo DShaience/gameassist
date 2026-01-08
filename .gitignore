@@ -80,3 +80,5 @@ $RECYCLE.BIN/
 *.temp
 *.swp
 *~
+
+GameScreenTranslator/configs/samples*
