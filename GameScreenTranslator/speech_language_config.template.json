@@ -1,0 +1,31 @@
+{
+  "Documentation": {
+    "TextToSpeechLanguages": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts",
+    "SpeechToTextLanguages": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=stt"
+  },
+
+  "AzureSpeech": {
+    "Endpoint": "https://YOUR-SPEECH-RESOURCE-NAME.cognitiveservices.azure.com/",
+    "ApiKey": "YOUR_AZURE_SPEECH_API_KEY_HERE",
+    "Region": "westus"
+  },
+
+  "TextToSpeech": {
+    "DefaultVoiceName": "he-IL-HilaNeural",
+    "VoiceByLanguage": {
+      "he-IL": "he-IL-HilaNeural",
+      "ru-RU": "ru-RU-SvetlanaNeural",
+      "en-US": "en-US-JennyNeural"
+    }
+  },
+
+  "SpeechToText": {
+    "DefaultRecognitionLanguage": "he-IL",
+    "CandidateLanguages": [
+      "he-IL",
+      "en-US",
+      "ru-RU"
+    ],
+    "EnableAutoLanguageDetection": true
+  }
+}

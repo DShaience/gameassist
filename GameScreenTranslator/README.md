@@ -1,30 +1,48 @@
 # Game Screen Translator
-
 A Windows desktop assistant that helps children (ages 5–10) access games that lack native translations.
 
 ## Setup Instructions
 
-### 1. Configure API Keys
+### 1. Configure Model & Speech Credentials
+
+This app can now speak output via Azure Speech TTS when you run `--foundry-translate-once`.
+To enable this, you must also configure `speech_language_config.json`.
+
+This project uses **multiple services**:
+- **Azure Foundry** for the LLM / vision model (translation + explain)
+- **Azure Speech** for **TTS** and **STT**
+
+Both are configured via local JSON files that are gitignored.
+
+#### A) Main app config (Azure Foundry + general settings)
 
 1. Copy `appsettings.template.json` to `appsettings.json`:
-   ```bash
+   ```cmd
    copy appsettings.template.json appsettings.json
    ```
 
-2. Edit `appsettings.json` and add your API credentials:
+2. Edit `appsettings.json` and fill in:
 
-   **For OpenAI:**
-   - Set `"Provider": "OpenAI"`
-   - Replace `YOUR_OPENAI_API_KEY_HERE` with your actual OpenAI API key
-   - Get your key from: https://platform.openai.com/api-keys
+- `Providers.AzureFoundry.Endpoint`
+- `Providers.AzureFoundry.ApiKey`
+- `Providers.AzureFoundry.LLM.ChatDeployment`
+- `Providers.AzureFoundry.LLM.VisionDeployment`
 
-   **For Azure OpenAI:**
-   - Set `"Provider": "AzureOpenAI"`
-   - Replace `YOUR_AZURE_OPENAI_API_KEY_HERE` with your Azure OpenAI key
-   - Update the `Endpoint` with your Azure resource URL
-   - Update the `DeploymentName` with your deployment name
+#### B) Speech config (Azure Speech TTS + STT + languages)
 
-3. **Important:** The `appsettings.json` file is gitignored and will never be committed to the repository.
+This is required for TTS in the current dev demo.
+
+1. Copy `speech_language_config.template.json` to `speech_language_config.json`:
+   ```cmd
+   copy speech_language_config.template.json speech_language_config.json
+   ```
+
+2. Edit `speech_language_config.json` and fill in:
+- `AzureSpeech.Endpoint`
+- `AzureSpeech.ApiKey`
+- `AzureSpeech.Region` (recommended)
+
+3. **Important:** `appsettings.json` and `speech_language_config.json` are gitignored and will never be committed to the repository.
 
 ### 2. Customize Settings (Optional)
 
@@ -36,11 +54,66 @@ You can customize various settings in `appsettings.json`:
 - **Audio Ducking**: Adjust game volume reduction percentage
 - **Logging**: Control log verbosity and screenshot inclusion
 
-### 3. Run the Application
+---
 
-```bash
-dotnet run
+## Quick run commands (dev demos)
+
+All commands below assume you run them from the **repo root**.
+
+### Capture once (prints signature)
+```cmd
+dotnet run --project GameScreenTranslator/GameScreenTranslator.csproj -- --capture-once
 ```
+
+### Cycle demo (prints signature + cycle index + priority)
+```cmd
+dotnet run --project GameScreenTranslator/GameScreenTranslator.csproj -- --cycle-demo
+```
+
+### Foundry translate once (vision call)
+#### 1) Ensure you have a real config file
+Create `GameScreenTranslator\appsettings.json` from the template:
+
+```cmd
+copy GameScreenTranslator\appsettings.template.json GameScreenTranslator\appsettings.json
+```
+
+Then edit `GameScreenTranslator\appsettings.json` and set real values:
+- `Providers.AzureFoundry.Endpoint`  
+  Format: `https://<resource-name>.<region>.inference.ai.azure.com`
+- `Providers.AzureFoundry.ApiKey`
+- `Providers.AzureFoundry.LLM.VisionDeployment`
+- `Providers.AzureFoundry.LLM.ChatDeployment`
+
+#### 2) Run
+```cmd
+dotnet run --project GameScreenTranslator/GameScreenTranslator.csproj -- --foundry-translate-once
+```
+
+To print the raw JSON returned by the model (debugging):
+
+```cmd
+dotnet run --project GameScreenTranslator/GameScreenTranslator.csproj -- --foundry-translate-once --raw
+```
+
+### Hotkey mode (interactive)
+Runs a message loop and listens for global hotkeys:
+
+- `Ctrl+Alt+T` = Translate/Cycle (capture active window → Foundry → TTS)
+- `Ctrl+Alt+Q` (hold) = Ask Question (STT while held → capture → Foundry answer → TTS)
+- `Ctrl+Alt+X` = Stop speaking / cancel
+
+```cmd
+dotnet run --project GameScreenTranslator/GameScreenTranslator.csproj -- --hotkey-mode
+```
+
+#### Troubleshooting: `No such host is known`
+This is almost always a **bad Endpoint** (still a placeholder or typo).
+
+- If your endpoint contains `your-foundry-resource-name` it’s still the template placeholder.
+- In Azure Portal / Azure AI Foundry: open your Foundry resource and copy the **inference endpoint** URL. It must be a real DNS name that resolves.
+
+---
 
 ## Hotkeys (Default)
 
@@ -53,7 +126,8 @@ dotnet run
 
 - .NET 10.0 SDK
 - Windows 10/11
-- OpenAI API key or Azure OpenAI access
+- Azure Foundry access (LLM / vision)
+- Azure Speech resource (TTS + STT)
 
 ## Privacy
 

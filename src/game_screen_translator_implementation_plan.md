@@ -3,6 +3,11 @@
 ## Overview
 This document provides a detailed technical implementation plan for the Game Screen Translator P0, a Windows console application that captures game screens, translates text, and speaks it aloud for children ages 5-10.
 
+**Design update:** The system uses **multiple Azure services** (not a single model):
+- **LLM / Vision**: Azure AI Foundry (chat + vision deployments)
+- **TTS**: Azure Speech
+- **STT**: Azure Speech
+
 ---
 
 ## Technology Stack
@@ -27,7 +32,12 @@ This document provides a detailed technical implementation plan for the Game Scr
 
 <!-- HTTP & API -->
 <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+
+<!-- Azure AI Foundry (LLM/Vision via Azure OpenAI-compatible endpoints) -->
 <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
+
+<!-- Azure Speech (TTS/STT) -->
+<PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.45.0" />
 
 <!-- Configuration -->
 <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
@@ -53,8 +63,10 @@ This document provides a detailed technical implementation plan for the Game Scr
 ```
 GameScreenTranslator/
 ├── Program.cs                          # Entry point, dependency injection setup
-├── appsettings.json                    # Configuration (gitignored)
-├── appsettings.template.json           # Template for users
+├── appsettings.json                    # Main config (gitignored)
+├── appsettings.template.json           # Main config template for users
+├── speech_language_config.json         # Speech config (gitignored)
+├── speech_language_config.template.json# Speech config template for users
 ├── GameScreenTranslator.csproj         # Project file
 │
 ├── Core/
@@ -108,60 +120,61 @@ GameScreenTranslator/
 
 ## Configuration Schema
 
-### appsettings.json
+This project uses **two local config files**:
+
+### 1) appsettings.json (main app config; gitignored)
 ```json
 {
-  "Provider": "OpenAI",
-  
-  "OpenAI": {
-    "ApiKey": "",
-    "Model": "gpt-4o",
-    "Organization": ""
+  "Providers": {
+    "AzureFoundry": {
+      "Endpoint": "https://YOUR-FOUNDRY-RESOURCE-NAME.YOUR-REGION.inference.ai.azure.com",
+      "ApiKey": "YOUR_AZURE_FOUNDRY_API_KEY_HERE",
+      "ApiVersion": "2024-10-21",
+      "LLM": {
+        "ChatDeployment": "YOUR_CHAT_DEPLOYMENT_NAME",
+        "VisionDeployment": "YOUR_VISION_DEPLOYMENT_NAME",
+        "RetryAttempts": 2,
+        "TimeoutSeconds": 30
+      }
+    },
+    "AzureSpeech": {
+      "ConfigPath": "speech_language_config.json"
+    }
   },
-  
-  "AzureOpenAI": {
-    "Endpoint": "https://your-resource.openai.azure.com",
-    "ApiKey": "",
-    "DeploymentName": "gpt-4o"
-  },
-  
   "Translation": {
     "TargetLanguage": "Hebrew",
-    "Mode": "explain",
-    "RetryAttempts": 2,
-    "TimeoutSeconds": 30
-  },
-  
-  "Hotkeys": {
-    "Translate": "Ctrl+Alt+T",
-    "AskQuestion": "Ctrl+Alt+Q",
-    "ToggleMode": "Ctrl+Alt+S",
-    "StopSpeaking": "Ctrl+Alt+X"
-  },
-  
-  "Audio": {
-    "DuckingEnabled": true,
-    "DuckVolumePercent": 25,
-    "DuckDurationMs": 300,
-    "TTSVoice": "en-US",
-    "TTSSpeed": 1.0
-  },
-  
-  "ScreenCapture": {
-    "DownscaleWidth": 640,
-    "SignatureHashAlgorithm": "xxHash64"
-  },
-  
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "GameScreenTranslator": "Debug"
-    },
-    "LogFilePath": "logs/interactions.jsonl",
-    "IncludeScreenshotsInDebug": true
+    "Mode": "explain"
   }
 }
 ```
+
+### 2) speech_language_config.json (speech config; gitignored)
+```json
+{
+  "AzureSpeech": {
+    "Endpoint": "https://YOUR-SPEECH-RESOURCE-NAME.cognitiveservices.azure.com/",
+    "ApiKey": "YOUR_AZURE_SPEECH_API_KEY_HERE",
+    "Region": "westus"
+  },
+  "TextToSpeech": {
+    "DefaultVoiceName": "he-IL-HilaNeural",
+    "VoiceByLanguage": {
+      "he-IL": "he-IL-HilaNeural",
+      "ru-RU": "ru-RU-SvetlanaNeural",
+      "en-US": "en-US-JennyNeural"
+    }
+  },
+  "SpeechToText": {
+    "DefaultRecognitionLanguage": "he-IL",
+    "CandidateLanguages": ["he-IL", "en-US", "ru-RU"],
+    "EnableAutoLanguageDetection": true
+  }
+}
+```
+
+Notes:
+- **LLM/Vision** and **Speech** credentials are intentionally separated.
+- `speech_language_config.json` enables multi-language STT and per-language TTS voice selection.
 
 ---
 
@@ -206,17 +219,24 @@ public class Translation
 ## Implementation Phases
 
 ### Phase 1: Project Setup & Configuration (Milestone 1)
-**Goal**: Working console app with configuration loading
+**Goal**: Working console app with configuration loading for **multiple services** (LLM/Vision + Speech)
 
 **Tasks**:
 1. Create .NET console project
-2. Add NuGet packages
-3. Implement `AppSettings.cs` with configuration binding
-4. Set up Serilog logging to JSONL
-5. Create `appsettings.template.json`
-6. Add `.gitignore` for `appsettings.json`
+2. Add NuGet packages (incl. `Microsoft.CognitiveServices.Speech`)
+3. Implement `AppSettings.cs` with configuration binding for:
+   - `Providers.AzureFoundry` (LLM/Vision)
+   - `Providers.AzureSpeech.ConfigPath` (speech config path)
+4. Implement `SpeechLanguageConfig.cs` to load `speech_language_config.json`
+5. Set up Serilog logging to JSONL
+6. Create templates:
+   - `appsettings.template.json`
+   - `speech_language_config.template.json`
+7. Add `.gitignore` rules for:
+   - `appsettings.json`
+   - `speech_language_config.json`
 
-**Validation**: App starts, loads config, writes test log entry
+**Validation**: App starts, loads both configs, writes a test log entry (without secrets)
 
 ---
 
@@ -261,19 +281,22 @@ public class Translation
 ---
 
 ### Phase 4: Model Client Integration (Milestone 3)
-**Goal**: Call OpenAI/Azure vision API with structured output
+**Goal**: Call Azure AI Foundry (Azure OpenAI-compatible) **vision + chat** endpoints with structured output
 
 **Tasks**:
-1. Implement `IModelClient` interface
-2. Implement `OpenAIModelClient.cs`:
-   - Use Azure.AI.OpenAI SDK
-   - Send image + prompt
-   - Request structured JSON via response_format
-3. Implement `AzureOpenAIModelClient.cs` (similar pattern)
-4. Implement `ModelClientFactory.cs` to select provider
-5. Create prompt template from `vision_translate.yaml`
-6. Parse JSON response into `TranslationResponse`
-7. Implement retry logic with exponential backoff
+1. Implement `IModelClient` interface (single abstraction used by the app)
+2. Implement `AzureFoundryModelClient.cs`:
+   - Use `Azure.AI.OpenAI`
+   - Configure endpoint + API key from `Providers.AzureFoundry`
+   - Use chat/vision deployment names from `Providers.AzureFoundry.LLM`
+   - Request structured JSON via response_format / JSON schema
+3. (Optional future) Additional providers behind the same interface
+4. Create prompt template from `vision_translate.yaml`
+5. Parse JSON response into `TranslationResponse`
+6. Implement retry logic with exponential backoff using `RetryAttempts`
+
+Note:
+- Even though this uses `Azure.AI.OpenAI`, the provider is **Azure Foundry-only** for now.
 
 **API Call Pattern**:
 ```csharp
@@ -304,21 +327,24 @@ var response = await chatClient.CompleteChatAsync(messages, options);
 ---
 
 ### Phase 5: TTS & Audio Playback (Milestone 2)
-**Goal**: Speak translated text aloud
+**Goal**: Speak translated text aloud using Azure Speech
 
 **Tasks**:
-1. Implement `AudioPlayer.cs`:
-   - Use OpenAI TTS API to generate audio
-   - Stream audio bytes
-   - Play using NAudio `WaveOutEvent`
-2. Implement interrupt functionality:
+1. Implement `TextToSpeechService.cs`:
+   - Use `Microsoft.CognitiveServices.Speech`
+   - Select voice using `speech_language_config.json` (`VoiceByLanguage`)
+   - Synthesize to an audio stream or byte buffer
+2. Implement playback with NAudio (or let Speech SDK play directly; prefer NAudio for interruption control)
+3. Implement interrupt functionality:
    - Stop current playback when new request arrives
-3. Implement `AudioDucker.cs`:
+4. Implement `AudioDucker.cs`:
    - Use NAudio to enumerate audio sessions
    - Find game process audio session
    - Gradually reduce volume to 25% over 300ms
    - Restore after TTS completes
-4. Handle Hebrew/Russian text encoding properly
+5. Ensure language/voice selection supports Hebrew/Russian/English
+
+**Validation**: Translation spoken aloud, game audio ducks during speech
 
 **NAudio Pattern for Ducking**:
 ```csharp
@@ -362,20 +388,22 @@ foreach (var session in device.AudioSessionManager.Sessions)
 ---
 
 ### Phase 7: Voice Questions (Milestone 5)
-**Goal**: Hold-to-talk voice questions
+**Goal**: Hold-to-talk voice questions using Azure Speech STT
 
 **Tasks**:
-1. Implement `SpeechToText.cs`:
-   - Use OpenAI Whisper API
-   - Record audio while hotkey held
-   - Transcribe to text
-2. Modify hotkey handling:
+1. Implement `SpeechToTextService.cs`:
+   - Use `Microsoft.CognitiveServices.Speech`
+   - Support:
+     - single language (`DefaultRecognitionLanguage`)
+     - optional auto language detection (`CandidateLanguages` + `EnableAutoLanguageDetection`)
+2. Record audio while hotkey held (NAudio capture to WAV/PCM)
+3. Modify hotkey handling:
    - Detect key down vs key up
    - Start recording on key down
    - Stop and transcribe on key up
-3. Send screenshot + transcribed question to model
-4. Use `vision_question.yaml` prompt template
-5. Speak answer aloud
+4. Send screenshot + transcribed question to Azure Foundry model
+5. Use `vision_question.yaml` prompt template
+6. Speak answer aloud via Azure Speech TTS
 
 **Validation**: Hold Ctrl+Alt+Q → ask question → hear answer
 
@@ -470,7 +498,7 @@ while (GetMessage(out MSG msg, IntPtr.Zero, 0, 0))
 **Solution**: NAudio's `SimpleAudioVolume` works per-session without elevation. Only requires same user context.
 
 ### Challenge 3: Hebrew/Russian TTS Quality
-**Solution**: OpenAI TTS API has excellent Hebrew support. Use `alloy` or `nova` voices. Fallback: Azure TTS if quality insufficient.
+**Solution**: Use Azure Speech Neural voices. Select per-language voice via `speech_language_config.json` (`VoiceByLanguage`). This keeps the app multilingual and avoids changing code when switching voices.
 
 ### Challenge 4: Structured Output from Vision Models
 **Solution**: Use `response_format` with JSON Schema (available in GPT-4o and later). Enforces structure without prompt engineering.
@@ -590,8 +618,8 @@ dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 3. Hold-to-talk voice questions work
 4. Game audio ducks during speech
 5. All interactions logged to JSONL
-6. Works with both OpenAI and Azure OpenAI
-7. Supports Hebrew and Russian output
+6. Works with Azure Foundry (LLM/Vision) and Azure Speech (TTS/STT)
+7. Supports Hebrew and Russian output (and is extensible to more languages)
 8. Handles API errors gracefully
 9. Single-file deployment works
 
