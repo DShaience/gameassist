@@ -38,6 +38,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
     private int _translateHotkeyId;
     private int _stopHotkeyId;
+    private int _tapQuestionHotkeyId;
 
     public HotkeyAppRunner(AppSettings settings, SpeechLanguageConfig speechConfig)
     {
@@ -57,6 +58,10 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         _translateHotkeyId = _hotkeys.Register(HotkeyModifiers.Control | HotkeyModifiers.Alt, (uint)VirtualKey.T);
         _stopHotkeyId = _hotkeys.Register(HotkeyModifiers.Control | HotkeyModifiers.Alt, (uint)VirtualKey.X);
 
+        // Tap-to-talk (auto end-of-speech) test mode:
+        // Ctrl+Alt+W => start STT recognize-once with end silence timeout, then ask Foundry and speak
+        _tapQuestionHotkeyId = _hotkeys.Register(HotkeyModifiers.Control | HotkeyModifiers.Alt, (uint)VirtualKey.W);
+
         _hotkeys.HotkeyPressed += (_, id) =>
         {
             lock (_sync)
@@ -74,6 +79,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             if (id == _stopHotkeyId)
             {
                 _ = Task.Run(StopAsync);
+                return;
+            }
+
+            if (id == _tapQuestionHotkeyId)
+            {
+                _ = Task.Run(TapQuestionAutoStopAsync);
                 return;
             }
         };
@@ -310,6 +321,70 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         }
     }
 
+    private async Task TapQuestionAutoStopAsync()
+    {
+        CancelCurrentOperation();
+
+        using var cts = NewOperationCts();
+        try
+        {
+            await _tts.StopAsync().ConfigureAwait(false);
+
+            // Capture immediately so the screenshot matches what the user is asking about.
+            var snap = _capturer.CaptureActiveWindow();
+            try
+            {
+                DebugPrintCapture("[Capture] Tap-to-talk", snap);
+                DebugSaveCapture(snap, "tap_to_talk");
+
+                Console.WriteLine("[Hotkey] Tap-to-talk: speak now (auto-stops after 1.5s silence)...");
+                var question = await _stt.RecognizeOnceWithEndSilenceTimeoutAsync(1500, cts.Token).ConfigureAwait(false);
+
+                if (string.IsNullOrWhiteSpace(question))
+                {
+                    Console.WriteLine("[Hotkey] No question recognized.");
+                    return;
+                }
+
+                Console.WriteLine($"[Hotkey] Question: {question}");
+                Console.WriteLine($"[Hotkey] Asking about captured window: {snap.WindowTitle}");
+
+                var response = await _foundryClient.TranslateCycleAsync(
+                        screenshot: snap.Screenshot,
+                        windowTitle: snap.WindowTitle,
+                        priority: PriorityCycler.UiPriority.Highlighted,
+                        targetLanguage: _settings.Translation.TargetLanguage,
+                        mode: _settings.Translation.Mode,
+                        userQuestion: question,
+                        downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
+                        onRawModelContent: raw =>
+                        {
+                            Console.WriteLine();
+                            Console.WriteLine("[Foundry Raw]");
+                            Console.WriteLine(raw);
+                            Console.WriteLine();
+                        },
+                        cancellationToken: cts.Token)
+                    .ConfigureAwait(false);
+
+                DebugPrintFoundryResponse(response);
+
+                var toSpeak = BuildSpeakText(response);
+
+                Console.WriteLine($"[TTS] {toSpeak}");
+                await _tts.SpeakAsync(toSpeak, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                snap.Screenshot.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Hotkey] Tap-to-talk flow failed:\n{ex}");
+        }
+    }
+
     private async Task StopAsync()
     {
         try
@@ -464,6 +539,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
         _hotkeys.Unregister(_translateHotkeyId);
         _hotkeys.Unregister(_stopHotkeyId);
+        _hotkeys.Unregister(_tapQuestionHotkeyId);
 
         _hotkeys.Dispose();
         _keyboardHook.Dispose();

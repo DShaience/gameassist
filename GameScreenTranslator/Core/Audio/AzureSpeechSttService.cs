@@ -10,6 +10,7 @@ namespace GameScreenTranslator.Core.Audio;
 
 public sealed class AzureSpeechSttService : IAsyncDisposable
 {
+    private readonly SpeechLanguageConfig _config;
     private readonly SpeechRecognizer _recognizer;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -17,31 +18,16 @@ public sealed class AzureSpeechSttService : IAsyncDisposable
 
     public AzureSpeechSttService(SpeechLanguageConfig config)
     {
-        if (config is null) throw new ArgumentNullException(nameof(config));
-
-        SpeechConfig speechConfig;
-
-        if (!string.IsNullOrWhiteSpace(config.AzureSpeech.Endpoint))
-        {
-            speechConfig = SpeechConfig.FromEndpoint(new Uri(config.AzureSpeech.Endpoint), config.AzureSpeech.ApiKey);
-
-            if (!string.IsNullOrWhiteSpace(config.AzureSpeech.Region))
-            {
-                speechConfig.SetProperty("SpeechServiceConnection_Region", config.AzureSpeech.Region);
-            }
-        }
-        else
-        {
-            // Region-based setup (common in Azure Speech docs).
-            speechConfig = SpeechConfig.FromSubscription(config.AzureSpeech.ApiKey, config.AzureSpeech.Region!);
-        }
+        _config = config ?? throw new ArgumentNullException(nameof(config));
 
         // Minimal P0: use default mic input.
         var audio = AudioConfig.FromDefaultMicrophoneInput();
 
-        var lang = config.SpeechToText.DefaultRecognitionLanguage;
+        var lang = _config.SpeechToText.DefaultRecognitionLanguage;
         if (string.IsNullOrWhiteSpace(lang))
             lang = "en-US";
+
+        var speechConfig = CreateSpeechConfig(_config);
 
         _recognizer = new SpeechRecognizer(speechConfig, lang, audio);
 
@@ -71,6 +57,46 @@ public sealed class AzureSpeechSttService : IAsyncDisposable
             ResultReason.Canceled => ThrowCanceled(result),
             _ => ""
         };
+    }
+
+    /// <summary>
+    /// Recognize from the microphone and auto-stop after the user stops speaking.
+    /// Uses Azure Speech end-of-speech silence timeout.
+    /// </summary>
+    public async Task<string> RecognizeOnceWithEndSilenceTimeoutAsync(
+        int endSilenceTimeoutMs,
+        CancellationToken cancellationToken = default)
+    {
+        if (endSilenceTimeoutMs <= 0)
+            throw new ArgumentOutOfRangeException(nameof(endSilenceTimeoutMs), "Must be > 0.");
+
+        // Prevent overlap with StartAsync/StopAsync and other STT calls.
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var audio = AudioConfig.FromDefaultMicrophoneInput();
+            var lang = _config.SpeechToText.DefaultRecognitionLanguage;
+            if (string.IsNullOrWhiteSpace(lang))
+                lang = "en-US";
+
+            var speechConfig = CreateSpeechConfig(_config, endSilenceTimeoutMs);
+
+            using var recognizer = new SpeechRecognizer(speechConfig, lang, audio);
+
+            var result = await recognizer.RecognizeOnceAsync().ConfigureAwait(false);
+
+            return result.Reason switch
+            {
+                ResultReason.RecognizedSpeech => (result.Text ?? "").Trim(),
+                ResultReason.NoMatch => "",
+                ResultReason.Canceled => ThrowCanceled(result),
+                _ => ""
+            };
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>
@@ -107,6 +133,35 @@ public sealed class AzureSpeechSttService : IAsyncDisposable
         {
             _gate.Release();
         }
+    }
+
+    private static SpeechConfig CreateSpeechConfig(SpeechLanguageConfig config, int? endSilenceTimeoutMs = null)
+    {
+        SpeechConfig speechConfig;
+
+        if (!string.IsNullOrWhiteSpace(config.AzureSpeech.Endpoint))
+        {
+            speechConfig = SpeechConfig.FromEndpoint(new Uri(config.AzureSpeech.Endpoint), config.AzureSpeech.ApiKey);
+
+            if (!string.IsNullOrWhiteSpace(config.AzureSpeech.Region))
+            {
+                speechConfig.SetProperty("SpeechServiceConnection_Region", config.AzureSpeech.Region);
+            }
+        }
+        else
+        {
+            // Region-based setup (common in Azure Speech docs).
+            speechConfig = SpeechConfig.FromSubscription(config.AzureSpeech.ApiKey, config.AzureSpeech.Region!);
+        }
+
+        if (endSilenceTimeoutMs is not null)
+        {
+            // How long to wait after user stops speaking before finalizing.
+            // (PropertyId is supported by the Speech SDK; string key is also accepted.)
+            speechConfig.SetProperty(PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, endSilenceTimeoutMs.Value.ToString());
+        }
+
+        return speechConfig;
     }
 
     private static string ThrowCanceled(SpeechRecognitionResult result)
