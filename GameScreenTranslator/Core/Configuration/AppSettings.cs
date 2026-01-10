@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace GameScreenTranslator.Core.Configuration;
 
 public sealed class AppSettings
@@ -5,7 +7,9 @@ public sealed class AppSettings
     public ProvidersSettings Providers { get; set; } = new();
     public TranslationSettings Translation { get; set; } = new();
     public ScreenCaptureSettings ScreenCapture { get; set; } = new();
+    public AudioSettings Audio { get; set; } = new();
     public LoggingSettings Logging { get; set; } = new();
+    public InteractionLoggingSettings InteractionLogging { get; set; } = new();
 
     public sealed class ProvidersSettings
     {
@@ -47,6 +51,39 @@ public sealed class AppSettings
         public string SignatureHashAlgorithm { get; set; } = "xxHash64";
     }
 
+    public sealed class AudioSettings
+    {
+        // Not yet used in P0, but kept to match appsettings.template.json (future phases).
+        public bool DuckingEnabled { get; set; } = true;
+        public int DuckVolumePercent { get; set; } = 25;
+        public int DuckDurationMs { get; set; } = 300;
+        public double TTSSpeed { get; set; } = 1.0;
+
+        /// <summary>
+        /// Fallback messages spoken when the app cannot complete an action.
+        /// Keys are language names like "Hebrew", "Russian", or locales like "he-IL", "ru-RU".
+        /// </summary>
+        public Dictionary<string, string> FallbackMessagesByLanguage { get; set; } = new()
+        {
+            // Hebrew
+            ["Hebrew"] = "סליחה, הייתה בעיה. נסו שוב.",
+            // Russian
+            ["Russian"] = "Извините, произошла ошибка. Попробуйте еще раз.",
+            // English default
+            ["en-US"] = "Sorry, something went wrong. Please try again."
+        };
+
+        /// <summary>
+        /// If capture fails due to protected / black frames, use this message.
+        /// </summary>
+        public string CaptureFailedMessage { get; set; } = "לא הצלחתי לצלם את המסך של המשחק הזה.";
+
+        /// <summary>
+        /// When speech synthesis or model calls fail, use a generic error message from FallbackMessagesByLanguage.
+        /// </summary>
+        public string GenericErrorMessageKey { get; set; } = "Hebrew";
+    }
+
     public sealed class LoggingSettings
     {
         // Compatible with the common Microsoft-style config block:
@@ -58,5 +95,18 @@ public sealed class AppSettings
             public string Default { get; set; } = "Information";
             public string GameScreenTranslator { get; set; } = "Information";
         }
+    }
+
+    public sealed class InteractionLoggingSettings
+    {
+        /// <summary>
+        /// JSONL output path (relative to the working directory if not rooted).
+        /// </summary>
+        public string LogFilePath { get; set; } = "logs/interactions.jsonl";
+
+        /// <summary>
+        /// If true and log level is Debug, include base64 screenshots in the JSONL output.
+        /// </summary>
+        public bool IncludeScreenshotsInDebug { get; set; } = true;
     }
 }

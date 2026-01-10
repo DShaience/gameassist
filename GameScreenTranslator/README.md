@@ -97,15 +97,23 @@ dotnet run --project GameScreenTranslator/GameScreenTranslator.csproj -- --found
 ```
 
 ### Hotkey mode (interactive)
-Runs a message loop and listens for global hotkeys:
+Runs a message loop and listens for global hotkeys.
 
+Default behavior:
+- Running with **no args** defaults to `--hotkey-mode`.
+- Use `--help` / `-h` to print usage and exit.
+
+Hotkeys:
 - `Ctrl+Alt+T` = Translate/Cycle (capture active window → Foundry → TTS)
 - `Ctrl+Alt+Q` (hold) = Ask Question (STT while held → capture → Foundry answer → TTS)
+- `Ctrl+Alt+W` = Tap-to-talk test (STT auto-stops after ~1.5s silence → Foundry answer → TTS)
 - `Ctrl+Alt+X` = Stop speaking / cancel
 
 ```cmd
-dotnet run --project GameScreenTranslator/GameScreenTranslator.csproj -- --hotkey-mode
+dotnet run --project GameScreenTranslator/GameScreenTranslator.csproj --
 ```
+
+(Equivalent to `--hotkey-mode`)
 
 #### Troubleshooting: `No such host is known`
 This is almost always a **bad Endpoint** (still a placeholder or typo).
@@ -119,8 +127,38 @@ This is almost always a **bad Endpoint** (still a placeholder or typo).
 
 - **Translate/Cycle**: `Ctrl + Alt + T` - Captures screen and speaks translation
 - **Ask Question**: `Ctrl + Alt + Q` (hold) - Record and ask a question about what's on screen
+- **Tap-to-talk test**: `Ctrl + Alt + W` - Ask a question without holding (auto-stops after ~1.5s silence)
 - **Toggle Mode**: `Ctrl + Alt + S` - Switch between translation modes
 - **Stop Speaking**: `Ctrl + Alt + X` - Interrupt current audio
+
+## Publish a portable single EXE (recommended)
+
+Create a single-file, self-contained Windows EXE:
+
+```cmd
+dotnet publish GameScreenTranslator\GameScreenTranslator.csproj -c Release -r win-x64 --self-contained true ^
+  -p:PublishSingleFile=true ^
+  -p:IncludeNativeLibrariesForSelfExtract=true ^
+  -p:EnableCompressionInSingleFile=true
+```
+
+Output:
+- `GameScreenTranslator\bin\Release\net10.0-windows\win-x64\publish\GameScreenTranslator.exe`
+
+### First run config behavior (published EXE)
+On first run, the app will **auto-create** these next to the EXE if they are missing:
+- `appsettings.json` (from embedded `appsettings.template.json`)
+- `speech_language_config.json` (from embedded `speech_language_config.template.json`)
+
+You must then edit those JSON files and replace the placeholder values.
+
+### PowerShell note
+PowerShell won’t run executables from the current folder unless you prefix with `.\`:
+
+```powershell
+.\GameScreenTranslator.exe --help
+.\GameScreenTranslator.exe
+```
 
 ## Requirements
 
@@ -129,12 +167,22 @@ This is almost always a **bad Endpoint** (still a placeholder or typo).
 - Azure Foundry access (LLM / vision)
 - Azure Speech resource (TTS + STT)
 
+## Error behavior (P0)
+
+- If capture/model/STT/TTS fails during a hotkey flow, the app will try to **speak a short fallback message**.
+- Configure these under `Audio` in `appsettings.json`:
+  - `Audio.FallbackMessagesByLanguage` (e.g. `"Hebrew"`, `"Russian"`, `"en-US"`)
+  - `Audio.GenericErrorMessageKey` (default key when target language is not found)
+
 ## Privacy
 
 - All logs are stored locally by default
-- Screenshots are only logged when log level is set to `Debug`
+- **Interaction logs** are written as **JSONL** to `logs/interactions.jsonl` (configurable via `InteractionLogging.LogFilePath`)
+- Screenshots are only embedded into interaction logs when:
+  - `InteractionLogging.IncludeScreenshotsInDebug = true`, and
+  - log level is set to `Debug`
 - Audio recordings are never uploaded
-- See `Logging` section in `appsettings.json` for privacy controls
+- See `Logging` and `InteractionLogging` sections in `appsettings.json` for privacy controls
 
 ## Development
 

@@ -66,9 +66,11 @@ public sealed class AzureFoundryClient
         var dataUrl = "data:image/png;base64," + Convert.ToBase64String(pngBytes);
 
         var systemText =
-            "You are a screen translator for children (ages 5–10). " +
-            "You will be given a screenshot of a game UI and must identify the most relevant readable text for the requested UI priority, " +
-            "translate it, and optionally give a short explanation. " +
+            "You are a screen game helper for children (ages 5-10)." +
+            "The child will ask about the game, instructions, help how to solve puzzles, or just explanation (since not everyone is native English speaker)." + 
+            "Your goal is to help the child with whatever game-related question they ask. You'll do your best to understand from the snapshot the question, and the window name (if available) what the child wants, and answer." +
+            "Do your best to give an extensive and detailed explanation. " + 
+            "You MUST keep the language simple and light, in a level and mannenerism fit for children." + 
             "Output MUST be valid JSON with the required fields and no extra commentary. " +
             "IMPORTANT: sourceText and translatedText must be CLEAN human-readable strings (no JSON fragments, no trailing commas, no surrounding quotes).";
 
@@ -202,13 +204,13 @@ public sealed class AzureFoundryClient
             sb.AppendLine("The user is asking a question about what is visible on screen:");
             sb.AppendLine(userQuestion);
             sb.AppendLine();
-            sb.AppendLine("Answer only using what is visible on screen. If you cannot see it, say so.");
+            sb.AppendLine("Answer using what is visible on screen, and any additional context or information you see fit.");
         }
         else
         {
             sb.AppendLine("Task:");
-            sb.AppendLine("- Identify the single most relevant piece of readable UI text according to the UI priority.");
-            sb.AppendLine("- Translate it to the target language.");
+            // sb.AppendLine("- Identify the single most relevant piece of readable UI text according to the UI priority.");
+            // sb.AppendLine("- Translate it to the target language.");
             sb.AppendLine("- If Mode is 'explain', add ONE short explanatory sentence for a child.");
             sb.AppendLine("- If Mode is 'simplified', rewrite in child-friendly language.");
         }

@@ -1,9 +1,11 @@
 using System;
 using System.IO;
+using ImageSharpImage = SixLabors.ImageSharp.Image;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using ImageSharpSize = SixLabors.ImageSharp.Size;
 
 namespace GameScreenTranslator.Core.Imaging;
 
@@ -34,13 +36,13 @@ public static class ImageDownscaler
         {
             ctx.Resize(new ResizeOptions
             {
-                Size = new Size(targetWidth, targetHeight),
+                Size = new ImageSharpSize(targetWidth, targetHeight),
                 Mode = ResizeMode.Max
             });
         });
     }
 
-    public static byte[] EncodePng(Image source)
+    public static byte[] EncodePng(ImageSharpImage source)
     {
         if (source is null) throw new ArgumentNullException(nameof(source));
 

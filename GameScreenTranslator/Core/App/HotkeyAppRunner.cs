@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using SixLabors.ImageSharp;
@@ -10,6 +11,7 @@ using GameScreenTranslator.Core.Capture;
 using GameScreenTranslator.Core.Configuration;
 using GameScreenTranslator.Core.Foundry;
 using GameScreenTranslator.Core.Hotkeys;
+using GameScreenTranslator.Core.Logging;
 using GameScreenTranslator.Core.State;
 
 namespace GameScreenTranslator.Core.App;
@@ -29,6 +31,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     private readonly Win32HotkeyManager _hotkeys = new();
     private readonly GlobalKeyboardHook _keyboardHook = new();
 
+    private readonly InteractionLogger _interactionLogger;
+
     private readonly object _sync = new();
 
     private CancellationTokenSource? _operationCts;
@@ -40,10 +44,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     private int _stopHotkeyId;
     private int _tapQuestionHotkeyId;
 
-    public HotkeyAppRunner(AppSettings settings, SpeechLanguageConfig speechConfig)
+    public HotkeyAppRunner(AppSettings settings, SpeechLanguageConfig speechConfig, string baseDirectory)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _speechConfig = speechConfig ?? throw new ArgumentNullException(nameof(speechConfig));
+
+        _interactionLogger = new InteractionLogger(_settings, baseDirectory);
 
         _foundryClient = new AzureFoundryClient(_settings.Providers.AzureFoundry);
         _tts = new AzureSpeechTtsService(_speechConfig);
@@ -164,67 +170,167 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         CancelCurrentOperation();
 
         using var cts = NewOperationCts();
+
+        var totalSw = InteractionLogger.StartTimer();
+        Stopwatch? captureSw = null;
+        Stopwatch? modelSw = null;
+        Stopwatch? ttsSw = null;
+
+        WindowCaptureResult? result = null;
+        ulong sig = 0;
+        int cycleIndex = 0;
+        PriorityCycler.UiPriority? priority = null;
+
+        Core.Models.TranslateCycleResponse? response = null;
+
+        var spokenKey = "";
+        var skipped = false;
+        var spokenText = "";
+        string? error = null;
+
         try
         {
             await _tts.StopAsync().ConfigureAwait(false);
 
             Console.WriteLine("[Hotkey] Translate/Cycle triggered...");
 
-            var result = _capturer.CaptureActiveWindow();
-            try
+            captureSw = InteractionLogger.StartTimer();
+            result = _capturer.CaptureActiveWindow();
+            captureSw.Stop();
+
+            DebugPrintCapture("[Capture] Translate/Cycle", result);
+            DebugSaveCapture(result, "translate_cycle");
+
+            sig = ScreenSignature.Compute(result.WindowTitle, result.Screenshot);
+            _state.SetCurrentScreen(sig);
+
+            cycleIndex = _state.GetCycleIndex();
+            priority = PriorityCycler.GetPriorityForCycleIndex(cycleIndex);
+
+            modelSw = InteractionLogger.StartTimer();
+            response = await _foundryClient.TranslateCycleAsync(
+                    screenshot: result.Screenshot,
+                    windowTitle: result.WindowTitle,
+                    priority: priority.Value,
+                    targetLanguage: _settings.Translation.TargetLanguage,
+                    mode: _settings.Translation.Mode,
+                    userQuestion: null,
+                    downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
+                    onRawModelContent: raw =>
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("[Foundry Raw]");
+                        Console.WriteLine(raw);
+                        Console.WriteLine();
+                    },
+                    cancellationToken: cts.Token)
+                .ConfigureAwait(false);
+            modelSw.Stop();
+
+            DebugPrintFoundryResponse(response);
+
+            spokenKey = $"{response.SelectedLabel}|{response.SourceText}|{response.TranslatedText}";
+            if (_state.HasSpoken(spokenKey))
             {
-                DebugPrintCapture("[Capture] Translate/Cycle", result);
-                DebugSaveCapture(result, "translate_cycle");
-                var sig = ScreenSignature.Compute(result.WindowTitle, result.Screenshot);
-                _state.SetCurrentScreen(sig);
-
-                var cycleIndex = _state.GetCycleIndex();
-                var priority = PriorityCycler.GetPriorityForCycleIndex(cycleIndex);
-
-                var response = await _foundryClient.TranslateCycleAsync(
-                        screenshot: result.Screenshot,
-                        windowTitle: result.WindowTitle,
-                        priority: priority,
-                        targetLanguage: _settings.Translation.TargetLanguage,
-                        mode: _settings.Translation.Mode,
-                        userQuestion: null,
-                        downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
-                        onRawModelContent: raw =>
-                        {
-                            Console.WriteLine();
-                            Console.WriteLine("[Foundry Raw]");
-                            Console.WriteLine(raw);
-                            Console.WriteLine();
-                        },
-                        cancellationToken: cts.Token)
-                    .ConfigureAwait(false);
-
-                DebugPrintFoundryResponse(response);
-
-                // Mark spoken to avoid repeats on same screen.
-                // For P0, a simple key is enough.
-                var spokenKey = $"{response.SelectedLabel}|{response.SourceText}|{response.TranslatedText}";
-                if (!_state.HasSpoken(spokenKey))
-                {
-                    _state.MarkSpoken(spokenKey);
-
-                    var toSpeak = BuildSpeakText(response);
-
-                    Console.WriteLine($"[TTS] {toSpeak}");
-                    await _tts.SpeakAsync(toSpeak, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
-                }
-
-                _state.AdvanceCycle();
+                skipped = true;
             }
-            finally
+            else
             {
-                result.Screenshot.Dispose();
+                _state.MarkSpoken(spokenKey);
+
+                spokenText = BuildSpeakText(response);
+
+                Console.WriteLine($"[TTS] {spokenText}");
+                ttsSw = InteractionLogger.StartTimer();
+                await _tts.SpeakAsync(spokenText, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+                ttsSw.Stop();
             }
+
+            _state.AdvanceCycle();
         }
         catch (Exception ex)
         {
+            error = ex.ToString();
+
             // Use ToString() so we also see the inner exception (HTTP status + body from AzureFoundryClient).
             Console.WriteLine($"[Hotkey] Translate/Cycle failed:\n{ex}");
+
+            try
+            {
+                var fallback = FallbackSpeech.ResolveGenericErrorMessage(_settings, _settings.Translation.TargetLanguage);
+                Console.WriteLine($"[TTS] {fallback}");
+                await _tts.SpeakAsync(fallback, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore fallback failures
+            }
+        }
+        finally
+        {
+            totalSw.Stop();
+
+            try
+            {
+                var entry = new InteractionLogEntry
+                {
+                    InteractionType = "translate_cycle",
+                    WindowTitle = result?.WindowTitle ?? "",
+                    ProcessName = result?.ProcessName,
+                    ProcessId = result?.ProcessId,
+                    HwndHex = result is null ? null : $"0x{result.Hwnd.ToInt64():X}",
+                    ScreenSignature = result is null ? "" : sig.ToString("X16"),
+                    CycleIndex = result is null ? null : cycleIndex,
+                    Priority = priority?.ToString(),
+                    SelectedRegion = response is null
+                        ? null
+                        : new InteractionLogEntry.SelectedRegionData
+                        {
+                            SelectedLabel = response.SelectedLabel,
+                            SourceText = response.SourceText,
+                            BoundingBox = response.BoundingBox is null
+                                ? null
+                                : new InteractionLogEntry.BoundingBoxData
+                                {
+                                    X = response.BoundingBox.X,
+                                    Y = response.BoundingBox.Y,
+                                    Width = response.BoundingBox.Width,
+                                    Height = response.BoundingBox.Height
+                                }
+                        },
+                    Translation = response is null
+                        ? null
+                        : new InteractionLogEntry.TranslationData
+                        {
+                            TargetLanguage = _settings.Translation.TargetLanguage,
+                            Mode = _settings.Translation.Mode,
+                            TranslatedText = response.TranslatedText,
+                            Explanation = response.Explanation,
+                            SpokenText = spokenText
+                        },
+                    LatencyMs = new InteractionLogEntry.LatencyData
+                    {
+                        Capture = InteractionLogger.ElapsedMs(captureSw),
+                        ModelCall = InteractionLogger.ElapsedMs(modelSw),
+                        Tts = InteractionLogger.ElapsedMs(ttsSw),
+                        Total = InteractionLogger.ElapsedMs(totalSw)
+                    },
+                    SkippedBecauseAlreadySpoken = skipped ? true : null,
+                    Error = error
+                };
+
+                if (result is not null)
+                    entry.ScreenshotPngBase64 = _interactionLogger.EncodeScreenshotPngBase64(result.Screenshot);
+
+                _interactionLogger.Append(entry);
+            }
+            catch (Exception logEx)
+            {
+                Console.WriteLine($"[Log] Failed to write interaction log: {logEx.Message}");
+            }
+
+            if (result is not null)
+                result.Screenshot.Dispose();
         }
     }
 
@@ -256,10 +362,22 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     {
         using var cts = NewOperationCts();
 
+        var totalSw = InteractionLogger.StartTimer();
+        Stopwatch? captureSw = null;
+        Stopwatch? modelSw = null;
+        Stopwatch? ttsSw = null;
+
+        WindowCaptureResult? snap = null;
+        ulong sig = 0;
+        var question = "";
+        Core.Models.TranslateCycleResponse? response = null;
+        var spokenText = "";
+        string? error = null;
+
         try
         {
             Console.WriteLine("[Hotkey] Hold-to-talk: recording stopped...");
-            var question = await _stt.StopAsync(cts.Token).ConfigureAwait(false);
+            question = await _stt.StopAsync(cts.Token).ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(question))
             {
@@ -269,7 +387,6 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
             Console.WriteLine($"[Hotkey] Question: {question}");
 
-            WindowCaptureResult? snap = null;
             lock (_sync)
             {
                 snap = _questionSnapshot;
@@ -277,47 +394,125 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             }
 
             // Fallback in case key-down capture failed for any reason.
-            snap ??= _capturer.CaptureActiveWindow();
-
-            try
+            if (snap is null)
             {
-                Console.WriteLine($"[Hotkey] Asking about captured window: {snap.WindowTitle}");
-
-                var response = await _foundryClient.TranslateCycleAsync(
-                        screenshot: snap.Screenshot,
-                        windowTitle: snap.WindowTitle,
-                        priority: PriorityCycler.UiPriority.Highlighted,
-                        targetLanguage: _settings.Translation.TargetLanguage,
-                        mode: _settings.Translation.Mode,
-                        userQuestion: question,
-                        downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
-                        onRawModelContent: raw =>
-                        {
-                            Console.WriteLine();
-                            Console.WriteLine("[Foundry Raw]");
-                            Console.WriteLine(raw);
-                            Console.WriteLine();
-                        },
-                        cancellationToken: cts.Token)
-                    .ConfigureAwait(false);
-
-                DebugPrintFoundryResponse(response);
-
-                // For question mode, we expect the model to place the answer in TranslatedText.
-                var toSpeak = BuildSpeakText(response);
-
-                Console.WriteLine($"[TTS] {toSpeak}");
-                await _tts.SpeakAsync(toSpeak, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+                captureSw = InteractionLogger.StartTimer();
+                snap = _capturer.CaptureActiveWindow();
+                captureSw.Stop();
             }
-            finally
-            {
-                snap.Screenshot.Dispose();
-            }
+
+            Console.WriteLine($"[Hotkey] Asking about captured window: {snap.WindowTitle}");
+
+            sig = ScreenSignature.Compute(snap.WindowTitle, snap.Screenshot);
+
+            modelSw = InteractionLogger.StartTimer();
+            response = await _foundryClient.TranslateCycleAsync(
+                    screenshot: snap.Screenshot,
+                    windowTitle: snap.WindowTitle,
+                    priority: PriorityCycler.UiPriority.Highlighted,
+                    targetLanguage: _settings.Translation.TargetLanguage,
+                    mode: _settings.Translation.Mode,
+                    userQuestion: question,
+                    downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
+                    onRawModelContent: raw =>
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("[Foundry Raw]");
+                        Console.WriteLine(raw);
+                        Console.WriteLine();
+                    },
+                    cancellationToken: cts.Token)
+                .ConfigureAwait(false);
+            modelSw.Stop();
+
+            DebugPrintFoundryResponse(response);
+
+            spokenText = BuildSpeakText(response);
+
+            Console.WriteLine($"[TTS] {spokenText}");
+            ttsSw = InteractionLogger.StartTimer();
+            await _tts.SpeakAsync(spokenText, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+            ttsSw.Stop();
         }
         catch (Exception ex)
         {
-            // Use ToString() so we also see the inner exception (HTTP status + body from AzureFoundryClient).
+            error = ex.ToString();
             Console.WriteLine($"[Hotkey] Question flow failed:\n{ex}");
+
+            try
+            {
+                var fallback = FallbackSpeech.ResolveGenericErrorMessage(_settings, _settings.Translation.TargetLanguage);
+                Console.WriteLine($"[TTS] {fallback}");
+                await _tts.SpeakAsync(fallback, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore fallback failures
+            }
+        }
+        finally
+        {
+            totalSw.Stop();
+
+            try
+            {
+                var entry = new InteractionLogEntry
+                {
+                    InteractionType = "question_hold",
+                    WindowTitle = snap?.WindowTitle ?? "",
+                    ProcessName = snap?.ProcessName,
+                    ProcessId = snap?.ProcessId,
+                    HwndHex = snap is null ? null : $"0x{snap.Hwnd.ToInt64():X}",
+                    ScreenSignature = snap is null ? "" : sig.ToString("X16"),
+                    Priority = PriorityCycler.UiPriority.Highlighted.ToString(),
+                    UserQuestion = string.IsNullOrWhiteSpace(question) ? null : question,
+                    SelectedRegion = response is null
+                        ? null
+                        : new InteractionLogEntry.SelectedRegionData
+                        {
+                            SelectedLabel = response.SelectedLabel,
+                            SourceText = response.SourceText,
+                            BoundingBox = response.BoundingBox is null
+                                ? null
+                                : new InteractionLogEntry.BoundingBoxData
+                                {
+                                    X = response.BoundingBox.X,
+                                    Y = response.BoundingBox.Y,
+                                    Width = response.BoundingBox.Width,
+                                    Height = response.BoundingBox.Height
+                                }
+                        },
+                    Translation = response is null
+                        ? null
+                        : new InteractionLogEntry.TranslationData
+                        {
+                            TargetLanguage = _settings.Translation.TargetLanguage,
+                            Mode = _settings.Translation.Mode,
+                            TranslatedText = response.TranslatedText,
+                            Explanation = response.Explanation,
+                            SpokenText = spokenText
+                        },
+                    LatencyMs = new InteractionLogEntry.LatencyData
+                    {
+                        Capture = InteractionLogger.ElapsedMs(captureSw),
+                        ModelCall = InteractionLogger.ElapsedMs(modelSw),
+                        Tts = InteractionLogger.ElapsedMs(ttsSw),
+                        Total = InteractionLogger.ElapsedMs(totalSw)
+                    },
+                    Error = error
+                };
+
+                if (snap is not null)
+                    entry.ScreenshotPngBase64 = _interactionLogger.EncodeScreenshotPngBase64(snap.Screenshot);
+
+                _interactionLogger.Append(entry);
+            }
+            catch (Exception logEx)
+            {
+                Console.WriteLine($"[Log] Failed to write interaction log: {logEx.Message}");
+            }
+
+            snap?.Screenshot.Dispose();
         }
     }
 
@@ -326,62 +521,153 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         CancelCurrentOperation();
 
         using var cts = NewOperationCts();
+
+        var totalSw = InteractionLogger.StartTimer();
+        Stopwatch? captureSw = null;
+        Stopwatch? modelSw = null;
+        Stopwatch? ttsSw = null;
+
+        WindowCaptureResult? snap = null;
+        ulong sig = 0;
+        var question = "";
+        Core.Models.TranslateCycleResponse? response = null;
+        var spokenText = "";
+        string? error = null;
+
         try
         {
             await _tts.StopAsync().ConfigureAwait(false);
 
             // Capture immediately so the screenshot matches what the user is asking about.
-            var snap = _capturer.CaptureActiveWindow();
-            try
+            captureSw = InteractionLogger.StartTimer();
+            snap = _capturer.CaptureActiveWindow();
+            captureSw.Stop();
+
+            DebugPrintCapture("[Capture] Tap-to-talk", snap);
+            DebugSaveCapture(snap, "tap_to_talk");
+
+            sig = ScreenSignature.Compute(snap.WindowTitle, snap.Screenshot);
+
+            Console.WriteLine("[Hotkey] Tap-to-talk: speak now (auto-stops after 1.5s silence)...");
+            question = await _stt.RecognizeOnceWithEndSilenceTimeoutAsync(1500, cts.Token).ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(question))
             {
-                DebugPrintCapture("[Capture] Tap-to-talk", snap);
-                DebugSaveCapture(snap, "tap_to_talk");
-
-                Console.WriteLine("[Hotkey] Tap-to-talk: speak now (auto-stops after 1.5s silence)...");
-                var question = await _stt.RecognizeOnceWithEndSilenceTimeoutAsync(1500, cts.Token).ConfigureAwait(false);
-
-                if (string.IsNullOrWhiteSpace(question))
-                {
-                    Console.WriteLine("[Hotkey] No question recognized.");
-                    return;
-                }
-
-                Console.WriteLine($"[Hotkey] Question: {question}");
-                Console.WriteLine($"[Hotkey] Asking about captured window: {snap.WindowTitle}");
-
-                var response = await _foundryClient.TranslateCycleAsync(
-                        screenshot: snap.Screenshot,
-                        windowTitle: snap.WindowTitle,
-                        priority: PriorityCycler.UiPriority.Highlighted,
-                        targetLanguage: _settings.Translation.TargetLanguage,
-                        mode: _settings.Translation.Mode,
-                        userQuestion: question,
-                        downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
-                        onRawModelContent: raw =>
-                        {
-                            Console.WriteLine();
-                            Console.WriteLine("[Foundry Raw]");
-                            Console.WriteLine(raw);
-                            Console.WriteLine();
-                        },
-                        cancellationToken: cts.Token)
-                    .ConfigureAwait(false);
-
-                DebugPrintFoundryResponse(response);
-
-                var toSpeak = BuildSpeakText(response);
-
-                Console.WriteLine($"[TTS] {toSpeak}");
-                await _tts.SpeakAsync(toSpeak, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+                Console.WriteLine("[Hotkey] No question recognized.");
+                return;
             }
-            finally
-            {
-                snap.Screenshot.Dispose();
-            }
+
+            Console.WriteLine($"[Hotkey] Question: {question}");
+            Console.WriteLine($"[Hotkey] Asking about captured window: {snap.WindowTitle}");
+
+            modelSw = InteractionLogger.StartTimer();
+            response = await _foundryClient.TranslateCycleAsync(
+                    screenshot: snap.Screenshot,
+                    windowTitle: snap.WindowTitle,
+                    priority: PriorityCycler.UiPriority.Highlighted,
+                    targetLanguage: _settings.Translation.TargetLanguage,
+                    mode: _settings.Translation.Mode,
+                    userQuestion: question,
+                    downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
+                    onRawModelContent: raw =>
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("[Foundry Raw]");
+                        Console.WriteLine(raw);
+                        Console.WriteLine();
+                    },
+                    cancellationToken: cts.Token)
+                .ConfigureAwait(false);
+            modelSw.Stop();
+
+            DebugPrintFoundryResponse(response);
+
+            spokenText = BuildSpeakText(response);
+
+            Console.WriteLine($"[TTS] {spokenText}");
+            ttsSw = InteractionLogger.StartTimer();
+            await _tts.SpeakAsync(spokenText, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+            ttsSw.Stop();
         }
         catch (Exception ex)
         {
+            error = ex.ToString();
             Console.WriteLine($"[Hotkey] Tap-to-talk flow failed:\n{ex}");
+
+            try
+            {
+                var fallback = FallbackSpeech.ResolveGenericErrorMessage(_settings, _settings.Translation.TargetLanguage);
+                Console.WriteLine($"[TTS] {fallback}");
+                await _tts.SpeakAsync(fallback, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore fallback failures
+            }
+        }
+        finally
+        {
+            totalSw.Stop();
+
+            try
+            {
+                var entry = new InteractionLogEntry
+                {
+                    InteractionType = "question_tap",
+                    WindowTitle = snap?.WindowTitle ?? "",
+                    ProcessName = snap?.ProcessName,
+                    ProcessId = snap?.ProcessId,
+                    HwndHex = snap is null ? null : $"0x{snap.Hwnd.ToInt64():X}",
+                    ScreenSignature = snap is null ? "" : sig.ToString("X16"),
+                    Priority = PriorityCycler.UiPriority.Highlighted.ToString(),
+                    UserQuestion = string.IsNullOrWhiteSpace(question) ? null : question,
+                    SelectedRegion = response is null
+                        ? null
+                        : new InteractionLogEntry.SelectedRegionData
+                        {
+                            SelectedLabel = response.SelectedLabel,
+                            SourceText = response.SourceText,
+                            BoundingBox = response.BoundingBox is null
+                                ? null
+                                : new InteractionLogEntry.BoundingBoxData
+                                {
+                                    X = response.BoundingBox.X,
+                                    Y = response.BoundingBox.Y,
+                                    Width = response.BoundingBox.Width,
+                                    Height = response.BoundingBox.Height
+                                }
+                        },
+                    Translation = response is null
+                        ? null
+                        : new InteractionLogEntry.TranslationData
+                        {
+                            TargetLanguage = _settings.Translation.TargetLanguage,
+                            Mode = _settings.Translation.Mode,
+                            TranslatedText = response.TranslatedText,
+                            Explanation = response.Explanation,
+                            SpokenText = spokenText
+                        },
+                    LatencyMs = new InteractionLogEntry.LatencyData
+                    {
+                        Capture = InteractionLogger.ElapsedMs(captureSw),
+                        ModelCall = InteractionLogger.ElapsedMs(modelSw),
+                        Tts = InteractionLogger.ElapsedMs(ttsSw),
+                        Total = InteractionLogger.ElapsedMs(totalSw)
+                    },
+                    Error = error
+                };
+
+                if (snap is not null)
+                    entry.ScreenshotPngBase64 = _interactionLogger.EncodeScreenshotPngBase64(snap.Screenshot);
+
+                _interactionLogger.Append(entry);
+            }
+            catch (Exception logEx)
+            {
+                Console.WriteLine($"[Log] Failed to write interaction log: {logEx.Message}");
+            }
+
+            snap?.Screenshot.Dispose();
         }
     }
 
@@ -399,6 +685,18 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             catch (ObjectDisposedException)
             {
                 // ignore (shutdown race)
+            }
+
+            try
+            {
+                _interactionLogger.Append(new InteractionLogEntry
+                {
+                    InteractionType = "stop"
+                });
+            }
+            catch (Exception logEx)
+            {
+                Console.WriteLine($"[Log] Failed to write stop interaction log: {logEx.Message}");
             }
         }
         catch (Exception ex)

@@ -2,9 +2,12 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- System tray icon support via System.Windows.Forms.NotifyIcon -->
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +19,16 @@
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
     <PackageReference Include="System.IO.Hashing" Version="10.0.0" />
+  </ItemGroup>
+
+  <!-- Embed config templates so published single-file EXE can bootstrap first-run configs -->
+  <ItemGroup>
+    <EmbeddedResource Include="appsettings.template.json">
+      <LogicalName>appsettings.template.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="speech_language_config.template.json">
+      <LogicalName>speech_language_config.template.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!-- Do not compile sample code as part of the main app project -->
