@@ -26,17 +26,23 @@ PRD expectation:
   - On key-up:
     - Stop STT → get transcribed question
     - If no question, exit
-    - Send screenshot + question to model → speak → log
+    - Send screenshot + question (+ conversation context when enabled) to model → speak → log
 - **Tap-to-talk test**: `Ctrl+Alt+W`
   - Capture screenshot immediately
   - Run “recognize once” STT with an end-silence timeout (~1500ms)
-  - Send screenshot + question to model → speak → log
+  - Send screenshot + question (+ conversation context when enabled) to model → speak → log
+- **Reset conversation**: `Ctrl+Alt+R`
+  - Clears in-memory conversation history and rolling summary
+  - Speaks a short confirmation and logs `conversation_reset`
 
 ## Interaction state machine (simplified)
 Shared state:
 - `_operationCts`: cancellation token source for the current in-flight operation (capture/model/tts/stt).
 - `_isRecordingQuestion`: guard for hold-to-talk to avoid re-entrancy.
 - `_questionSnapshot`: stores the captured window screenshot for the hold-to-talk flow.
+- Conversation state (in-memory):
+  - `_conversationStore`: ordered list of user/assistant turns
+  - `_conversationContextBuilder`: builds request messages (rolling summary + recent turns + current screenshot)
 
 Rules:
 - New hotkey action begins by calling `CancelCurrentOperation()`.

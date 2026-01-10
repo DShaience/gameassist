@@ -10,6 +10,7 @@ public sealed class AppSettings
     public AudioSettings Audio { get; set; } = new();
     public LoggingSettings Logging { get; set; } = new();
     public InteractionLoggingSettings InteractionLogging { get; set; } = new();
+    public ConversationSettings Conversation { get; set; } = new();
 
     public sealed class ProvidersSettings
     {
@@ -108,5 +109,38 @@ public sealed class AppSettings
         /// If true and log level is Debug, include base64 screenshots in the JSONL output.
         /// </summary>
         public bool IncludeScreenshotsInDebug { get; set; } = true;
+    }
+
+    public sealed class ConversationSettings
+    {
+        /// <summary>
+        /// Whether conversation history is enabled (allows follow-up questions with context).
+        /// </summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>
+        /// Number of recent turns (user+assistant pairs) to keep verbatim in context.
+        /// Older turns are summarized.
+        /// </summary>
+        public int MaxVerbatimTurns { get; set; } = 2;
+
+        /// <summary>
+        /// Maximum character length for the rolling summary of older turns.
+        /// </summary>
+        public int SummaryMaxChars { get; set; } = 1200;
+
+        /// <summary>
+        /// Logging settings for conversation context.
+        /// </summary>
+        public ConversationLoggingSettings Logging { get; set; } = new();
+
+        public sealed class ConversationLoggingSettings
+        {
+            /// <summary>
+            /// If true and log level is Debug, include conversation context text in JSONL output.
+            /// Privacy-sensitive: disabled by default.
+            /// </summary>
+            public bool IncludeContextInDebug { get; set; } = false;
+        }
     }
 }

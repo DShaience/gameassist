@@ -27,9 +27,20 @@ Timeouts/retries:
 For each interaction:
 1. Downscale screenshot to a configured width (default 640, override via `ScreenCapture.DownscaleWidth`).
 2. Encode PNG bytes and send as `image_url` using a base64 data URL.
-3. Send 2 messages:
+
+3. **Translate/Cycle (non-conversational)** sends 2 messages:
    - `system`: prompt text from YAML (`foundry.system`)
-   - `user`: rendered template (`foundry.translate_user` or `foundry.question_user`) + image content
+   - `user`: rendered template (`foundry.translate_user`) + image content
+
+4. **Question flows (conversational, when enabled)** send a message list built by `Core/Conversation/ConversationContextBuilder`:
+   - `system`: prompt text from YAML (`foundry.system`)
+   - optional `system`: `[Previous conversation summary: ...]` (rolling summary of older turns)
+   - recent conversation turns verbatim (text-only; no historical images)
+   - current `user`: rendered template (`foundry.question_user`) + current screenshot image content
+
+Summarization:
+- Older turns can be summarized using the same Foundry deployment via `AzureFoundryClient.GenerateSummaryAsync(...)` (text-only request).
+- If summarization fails, the builder falls back to truncation.
 
 Temperature/tokens:
 - Starts with `temperature = 0.2`

@@ -22,6 +22,18 @@ public sealed class InteractionLogEntry
 
     public string? UserQuestion { get; set; }
 
+    /// <summary>
+    /// Conversation turn index at the time of this interaction (0-based).
+    /// Used for conversation history tracking.
+    /// </summary>
+    public int? ConversationTurnIndex { get; set; }
+
+    /// <summary>
+    /// Privacy-sensitive. Optional conversation context text (rolling summary + recent turns),
+    /// only intended to be written when Debug + explicit opt-in is enabled.
+    /// </summary>
+    public string? ConversationContextText { get; set; }
+
     public SelectedRegionData? SelectedRegion { get; set; }
     public TranslationData? Translation { get; set; }
     public LatencyData? LatencyMs { get; set; }
@@ -37,16 +49,7 @@ public sealed class InteractionLogEntry
     public sealed class SelectedRegionData
     {
         public string? SelectedLabel { get; set; }
-        public BoundingBoxData? BoundingBox { get; set; }
         public string? SourceText { get; set; }
-    }
-
-    public sealed class BoundingBoxData
-    {
-        public int X { get; set; }
-        public int Y { get; set; }
-        public int Width { get; set; }
-        public int Height { get; set; }
     }
 
     public sealed class TranslationData

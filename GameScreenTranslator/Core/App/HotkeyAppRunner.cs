@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -9,6 +10,7 @@ using System.Threading.Tasks;
 using GameScreenTranslator.Core.Audio;
 using GameScreenTranslator.Core.Capture;
 using GameScreenTranslator.Core.Configuration;
+using GameScreenTranslator.Core.Conversation;
 using GameScreenTranslator.Core.Foundry;
 using GameScreenTranslator.Core.Hotkeys;
 using GameScreenTranslator.Core.Logging;
@@ -34,6 +36,10 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
     private readonly InteractionLogger _interactionLogger;
 
+    // Conversation support
+    private readonly ConversationStore _conversationStore = new();
+    private readonly ConversationContextBuilder _conversationContextBuilder;
+
     private readonly object _sync = new();
 
     private CancellationTokenSource? _operationCts;
@@ -44,6 +50,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     private int _translateHotkeyId;
     private int _stopHotkeyId;
     private int _tapQuestionHotkeyId;
+    private int _resetConversationHotkeyId;
 
     public HotkeyAppRunner(AppSettings settings, SpeechLanguageConfig speechConfig, PromptPack prompts, string baseDirectory)
     {
@@ -56,6 +63,22 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         _foundryClient = new AzureFoundryClient(_settings.Providers.AzureFoundry, _prompts);
         _tts = new AzureSpeechTtsService(_speechConfig);
         _stt = new AzureSpeechSttService(_speechConfig);
+
+        // Initialize conversation context builder with summarizer
+        var conversationConfig = new ConversationContextConfig
+        {
+            Enabled = _settings.Conversation.Enabled,
+            MaxVerbatimTurns = _settings.Conversation.MaxVerbatimTurns,
+            SummaryMaxChars = _settings.Conversation.SummaryMaxChars
+        };
+
+        // Use Foundry to generate summaries
+        Func<string, CancellationToken, Task<string>> summarizer = async (text, ct) =>
+        {
+            return await _foundryClient.GenerateSummaryAsync(text, ct).ConfigureAwait(false);
+        };
+
+        _conversationContextBuilder = new ConversationContextBuilder(conversationConfig, summarizer);
     }
 
     public void Start()
@@ -69,6 +92,10 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         // Tap-to-talk (auto end-of-speech) test mode:
         // Ctrl+Alt+W => start STT recognize-once with end silence timeout, then ask Foundry and speak
         _tapQuestionHotkeyId = _hotkeys.Register(HotkeyModifiers.Control | HotkeyModifiers.Alt, (uint)VirtualKey.W);
+
+        // Reset conversation history:
+        // Ctrl+Alt+R => clear conversation context
+        _resetConversationHotkeyId = _hotkeys.Register(HotkeyModifiers.Control | HotkeyModifiers.Alt, (uint)VirtualKey.R);
 
         _hotkeys.HotkeyPressed += (_, id) =>
         {
@@ -93,6 +120,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             if (id == _tapQuestionHotkeyId)
             {
                 _ = Task.Run(TapQuestionAutoStopAsync);
+                return;
+            }
+
+            if (id == _resetConversationHotkeyId)
+            {
+                _ = Task.Run(ResetConversationAsync);
                 return;
             }
         };
@@ -289,16 +322,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                         : new InteractionLogEntry.SelectedRegionData
                         {
                             SelectedLabel = response.SelectedLabel,
-                            SourceText = response.SourceText,
-                            BoundingBox = response.BoundingBox is null
-                                ? null
-                                : new InteractionLogEntry.BoundingBoxData
-                                {
-                                    X = response.BoundingBox.X,
-                                    Y = response.BoundingBox.Y,
-                                    Width = response.BoundingBox.Width,
-                                    Height = response.BoundingBox.Height
-                                }
+                            SourceText = response.SourceText
                         },
                     Translation = response is null
                         ? null
@@ -375,6 +399,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         Core.Models.TranslateCycleResponse? response = null;
         var spokenText = "";
         string? error = null;
+        var conversationTurnCount = 0;
+        string? conversationContextTextForLog = null;
 
         try
         {
@@ -407,15 +433,32 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
             sig = ScreenSignature.Compute(snap.WindowTitle, snap.Screenshot);
 
+            // Build conversation context
+            var imageDataUrl = _foundryClient.PrepareScreenshotDataUrl(snap.Screenshot, _settings.ScreenCapture.DownscaleWidth);
+            var userPrompt = _foundryClient.BuildUserPromptText(
+                snap.WindowTitle,
+                PriorityCycler.UiPriority.Highlighted,
+                _settings.Translation.TargetLanguage,
+                _settings.Translation.Mode,
+                question);
+
+            conversationTurnCount = _conversationStore.TurnCount;
+
+            // Build messages with conversation history
+            var messages = await _conversationContextBuilder.BuildMessagesAsync(
+                _foundryClient.GetSystemPrompt(),
+                userPrompt,
+                imageDataUrl,
+                _conversationStore,
+                cts.Token).ConfigureAwait(false);
+
+            Console.WriteLine($"[Conversation] Turn count: {conversationTurnCount}, Messages: {messages.Count}");
+
+            conversationContextTextForLog = BuildConversationContextTextForLog(question);
+
             modelSw = InteractionLogger.StartTimer();
-            response = await _foundryClient.TranslateCycleAsync(
-                    screenshot: snap.Screenshot,
-                    windowTitle: snap.WindowTitle,
-                    priority: PriorityCycler.UiPriority.Highlighted,
-                    targetLanguage: _settings.Translation.TargetLanguage,
-                    mode: _settings.Translation.Mode,
-                    userQuestion: question,
-                    downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
+            response = await _foundryClient.SendWithMessagesAsync(
+                    messages,
                     onRawModelContent: raw =>
                     {
                         Console.WriteLine();
@@ -430,6 +473,10 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             DebugPrintFoundryResponse(response);
 
             spokenText = BuildSpeakText(response);
+
+            // Store conversation turns (only on success)
+            _conversationStore.AppendUser(question);
+            _conversationStore.AppendAssistant(spokenText);
 
             Console.WriteLine($"[TTS] {spokenText}");
             ttsSw = InteractionLogger.StartTimer();
@@ -468,21 +515,14 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                     ScreenSignature = snap is null ? "" : sig.ToString("X16"),
                     Priority = PriorityCycler.UiPriority.Highlighted.ToString(),
                     UserQuestion = string.IsNullOrWhiteSpace(question) ? null : question,
+                    ConversationTurnIndex = conversationTurnCount,
+                    ConversationContextText = conversationContextTextForLog,
                     SelectedRegion = response is null
                         ? null
                         : new InteractionLogEntry.SelectedRegionData
                         {
                             SelectedLabel = response.SelectedLabel,
-                            SourceText = response.SourceText,
-                            BoundingBox = response.BoundingBox is null
-                                ? null
-                                : new InteractionLogEntry.BoundingBoxData
-                                {
-                                    X = response.BoundingBox.X,
-                                    Y = response.BoundingBox.Y,
-                                    Width = response.BoundingBox.Width,
-                                    Height = response.BoundingBox.Height
-                                }
+                            SourceText = response.SourceText
                         },
                     Translation = response is null
                         ? null
@@ -535,6 +575,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         Core.Models.TranslateCycleResponse? response = null;
         var spokenText = "";
         string? error = null;
+        var conversationTurnCount = 0;
+        string? conversationContextTextForLog = null;
 
         try
         {
@@ -562,15 +604,32 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             Console.WriteLine($"[Hotkey] Question: {question}");
             Console.WriteLine($"[Hotkey] Asking about captured window: {snap.WindowTitle}");
 
+            // Build conversation context
+            var imageDataUrl = _foundryClient.PrepareScreenshotDataUrl(snap.Screenshot, _settings.ScreenCapture.DownscaleWidth);
+            var userPrompt = _foundryClient.BuildUserPromptText(
+                snap.WindowTitle,
+                PriorityCycler.UiPriority.Highlighted,
+                _settings.Translation.TargetLanguage,
+                _settings.Translation.Mode,
+                question);
+
+            conversationTurnCount = _conversationStore.TurnCount;
+
+            // Build messages with conversation history
+            var messages = await _conversationContextBuilder.BuildMessagesAsync(
+                _foundryClient.GetSystemPrompt(),
+                userPrompt,
+                imageDataUrl,
+                _conversationStore,
+                cts.Token).ConfigureAwait(false);
+
+            Console.WriteLine($"[Conversation] Turn count: {conversationTurnCount}, Messages: {messages.Count}");
+
+            conversationContextTextForLog = BuildConversationContextTextForLog(question);
+
             modelSw = InteractionLogger.StartTimer();
-            response = await _foundryClient.TranslateCycleAsync(
-                    screenshot: snap.Screenshot,
-                    windowTitle: snap.WindowTitle,
-                    priority: PriorityCycler.UiPriority.Highlighted,
-                    targetLanguage: _settings.Translation.TargetLanguage,
-                    mode: _settings.Translation.Mode,
-                    userQuestion: question,
-                    downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
+            response = await _foundryClient.SendWithMessagesAsync(
+                    messages,
                     onRawModelContent: raw =>
                     {
                         Console.WriteLine();
@@ -585,6 +644,10 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             DebugPrintFoundryResponse(response);
 
             spokenText = BuildSpeakText(response);
+
+            // Store conversation turns (only on success)
+            _conversationStore.AppendUser(question);
+            _conversationStore.AppendAssistant(spokenText);
 
             Console.WriteLine($"[TTS] {spokenText}");
             ttsSw = InteractionLogger.StartTimer();
@@ -623,21 +686,14 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                     ScreenSignature = snap is null ? "" : sig.ToString("X16"),
                     Priority = PriorityCycler.UiPriority.Highlighted.ToString(),
                     UserQuestion = string.IsNullOrWhiteSpace(question) ? null : question,
+                    ConversationTurnIndex = conversationTurnCount,
+                    ConversationContextText = conversationContextTextForLog,
                     SelectedRegion = response is null
                         ? null
                         : new InteractionLogEntry.SelectedRegionData
                         {
                             SelectedLabel = response.SelectedLabel,
-                            SourceText = response.SourceText,
-                            BoundingBox = response.BoundingBox is null
-                                ? null
-                                : new InteractionLogEntry.BoundingBoxData
-                                {
-                                    X = response.BoundingBox.X,
-                                    Y = response.BoundingBox.Y,
-                                    Width = response.BoundingBox.Width,
-                                    Height = response.BoundingBox.Height
-                                }
+                            SourceText = response.SourceText
                         },
                     Translation = response is null
                         ? null
@@ -671,6 +727,91 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
             snap?.Screenshot.Dispose();
         }
+    }
+
+    private async Task ResetConversationAsync()
+    {
+        try
+        {
+            Console.WriteLine("[Hotkey] Reset conversation triggered...");
+
+            var turnCount = _conversationStore.TurnCount;
+            _conversationStore.Reset();
+            _conversationContextBuilder.ResetSummary();
+
+            Console.WriteLine($"[Conversation] Cleared {turnCount} turns.");
+
+            // Speak confirmation
+            var confirmationMessage = _settings.Translation.TargetLanguage.ToLowerInvariant() switch
+            {
+                "hebrew" => "השיחה נמחקה.",
+                "russian" => "Разговор сброшен.",
+                _ => "Conversation cleared."
+            };
+
+            using var cts = NewOperationCts();
+            await _tts.SpeakAsync(confirmationMessage, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+
+            // Log the reset
+            try
+            {
+                _interactionLogger.Append(new InteractionLogEntry
+                {
+                    InteractionType = "conversation_reset",
+                    ConversationTurnIndex = turnCount
+                });
+            }
+            catch (Exception logEx)
+            {
+                Console.WriteLine($"[Log] Failed to write reset interaction log: {logEx.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Hotkey] Reset conversation failed: {ex.Message}");
+        }
+    }
+
+    private string? BuildConversationContextTextForLog(string currentQuestion)
+    {
+        if (!_settings.Conversation.Enabled)
+            return null;
+
+        if (!_settings.Conversation.Logging.IncludeContextInDebug)
+            return null;
+
+        if (!Log.IsEnabled(LogLevel.Debug))
+            return null;
+
+        var recentCount = Math.Max(0, _settings.Conversation.MaxVerbatimTurns) * 2;
+        var recentTurns = _conversationStore.GetTurns();
+        if (recentCount > 0 && recentTurns.Count > recentCount)
+            recentTurns = recentTurns.TakeLast(recentCount).ToArray();
+
+        var sb = new System.Text.StringBuilder();
+
+        if (!string.IsNullOrWhiteSpace(_conversationContextBuilder.RollingSummary))
+        {
+            sb.AppendLine("RollingSummary:");
+            sb.AppendLine(_conversationContextBuilder.RollingSummary);
+            sb.AppendLine();
+        }
+
+        if (recentTurns.Count > 0)
+        {
+            sb.AppendLine("RecentTurns:");
+            foreach (var t in recentTurns)
+            {
+                sb.AppendLine($"{t.Role}: {t.Text}");
+            }
+
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("CurrentQuestion:");
+        sb.AppendLine(currentQuestion);
+
+        return sb.ToString().Trim();
     }
 
     private async Task StopAsync()
@@ -840,6 +981,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         _hotkeys.Unregister(_translateHotkeyId);
         _hotkeys.Unregister(_stopHotkeyId);
         _hotkeys.Unregister(_tapQuestionHotkeyId);
+        _hotkeys.Unregister(_resetConversationHotkeyId);
 
         _hotkeys.Dispose();
         _keyboardHook.Dispose();
