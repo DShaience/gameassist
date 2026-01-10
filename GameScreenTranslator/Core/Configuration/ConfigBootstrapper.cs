@@ -19,6 +19,11 @@ public static class ConfigBootstrapper
         EnsureFromEmbeddedTemplate(
             templateResourceName: "speech_language_config.template.json",
             targetPath: Path.Combine(baseDirectory, "speech_language_config.json"));
+
+        // Prompts (YAML)
+        EnsureFromEmbeddedTemplate(
+            templateResourceName: "prompts.template.yaml",
+            targetPath: Path.Combine(baseDirectory, "configs", "prompts.yaml"));
     }
 
     private static void EnsureFromEmbeddedTemplate(string templateResourceName, string targetPath)

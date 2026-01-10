@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -25,10 +26,12 @@ public sealed class AzureFoundryClient
 
     private readonly HttpClient _http;
     private readonly AppSettings.AzureFoundrySettings _settings;
+    private readonly PromptPack _prompts;
 
-    public AzureFoundryClient(AppSettings.AzureFoundrySettings settings, HttpClient? httpClient = null)
+    public AzureFoundryClient(AppSettings.AzureFoundrySettings settings, PromptPack prompts, HttpClient? httpClient = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _prompts = prompts ?? throw new ArgumentNullException(nameof(prompts));
 
         // Note: Azure Foundry "model inference" endpoint is OpenAI-compatible. We call:
         //   POST /openai/deployments/{deployment}/chat/completions?api-version=...
@@ -65,16 +68,9 @@ public sealed class AzureFoundryClient
         var pngBytes = ImageDownscaler.EncodePng(downscaled);
         var dataUrl = "data:image/png;base64," + Convert.ToBase64String(pngBytes);
 
-        var systemText =
-            "You are a screen game helper for children (ages 5-10)." +
-            "The child will ask about the game, instructions, help how to solve puzzles, or just explanation (since not everyone is native English speaker)." + 
-            "Your goal is to help the child with whatever game-related question they ask. You'll do your best to understand from the snapshot the question, and the window name (if available) what the child wants, and answer." +
-            "Do your best to give an extensive and detailed explanation. " + 
-            "You MUST keep the language simple and light, in a level and mannenerism fit for children." + 
-            "Output MUST be valid JSON with the required fields and no extra commentary. " +
-            "IMPORTANT: sourceText and translatedText must be CLEAN human-readable strings (no JSON fragments, no trailing commas, no surrounding quotes).";
+        var systemText = _prompts.Foundry.System;
 
-        var userText = BuildUserPrompt(windowTitle, priority, targetLanguage, mode, userQuestion);
+        var userText = BuildUserPrompt(windowTitle, priority, targetLanguage, mode, userQuestion, _prompts);
 
         var request = new ChatCompletionsRequest
         {
@@ -189,49 +185,23 @@ public sealed class AzureFoundryClient
         PriorityCycler.UiPriority priority,
         string targetLanguage,
         string mode,
-        string? userQuestion)
+        string? userQuestion,
+        PromptPack prompts)
     {
-        var sb = new StringBuilder();
+        var template = string.IsNullOrWhiteSpace(userQuestion)
+            ? prompts.Foundry.TranslateUser
+            : prompts.Foundry.QuestionUser;
 
-        sb.AppendLine($"Window title: {windowTitle}");
-        sb.AppendLine($"UI priority to focus on: {priority}");
-        sb.AppendLine($"Target language: {targetLanguage}");
-        sb.AppendLine($"Mode: {mode}");
-        sb.AppendLine();
-
-        if (!string.IsNullOrWhiteSpace(userQuestion))
+        var values = new Dictionary<string, string?>
         {
-            sb.AppendLine("The user is asking a question about what is visible on screen:");
-            sb.AppendLine(userQuestion);
-            sb.AppendLine();
-            sb.AppendLine("Answer using what is visible on screen, and any additional context or information you see fit.");
-        }
-        else
-        {
-            sb.AppendLine("Task:");
-            // sb.AppendLine("- Identify the single most relevant piece of readable UI text according to the UI priority.");
-            // sb.AppendLine("- Translate it to the target language.");
-            sb.AppendLine("- If Mode is 'explain', add ONE short explanatory sentence for a child.");
-            sb.AppendLine("- If Mode is 'simplified', rewrite in child-friendly language.");
-        }
+            ["windowTitle"] = windowTitle,
+            ["priority"] = priority.ToString(),
+            ["targetLanguage"] = targetLanguage,
+            ["mode"] = mode,
+            ["userQuestion"] = userQuestion
+        };
 
-        sb.AppendLine();
-        sb.AppendLine("Return strict JSON with this schema:");
-        sb.AppendLine("{");
-        sb.AppendLine(@"  ""selectedLabel"": string,");
-        sb.AppendLine(@"  ""boundingBox"": { ""x"": int, ""y"": int, ""width"": int, ""height"": int } | null,");
-        sb.AppendLine(@"  ""sourceText"": string,");
-        sb.AppendLine(@"  ""translatedText"": string,");
-        sb.AppendLine(@"  ""explanation"": string | null");
-        sb.AppendLine("}");
-        sb.AppendLine();
-        sb.AppendLine("Formatting rules:");
-        sb.AppendLine("- sourceText and translatedText MUST be plain human-readable strings.");
-        sb.AppendLine(@"- Do NOT return JSON fragments like """"GameTitle"""": """"Super Adventure"""",""");
-        sb.AppendLine(@"- If the UI shows label+value, return it as a normal phrase, e.g. ""Game Title: Super Adventure"".");
-        sb.AppendLine("- No markdown. No extra keys.");
-
-        return sb.ToString();
+        return PromptTemplate.Render(template, values);
     }
 
     private static void NormalizeOutput(TranslateCycleResponse output)

@@ -19,6 +19,7 @@
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
     <PackageReference Include="System.IO.Hashing" Version="10.0.0" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 
   <!-- Embed config templates so published single-file EXE can bootstrap first-run configs -->
@@ -28,6 +29,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="speech_language_config.template.json">
       <LogicalName>speech_language_config.template.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="configs\prompts.template.yaml">
+      <LogicalName>prompts.template.yaml</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

@@ -93,6 +93,8 @@ try
 
         ConfigureLogging(settings);
 
+        var prompts = PromptPackLoader.Load(baseDir);
+
         var speechConfig = SpeechLanguageConfigLoader.Load(baseDir, settings.Providers.AzureSpeech.ConfigPath);
 
         var capturer = new ActiveWindowCapture();
@@ -106,7 +108,7 @@ try
         {
             var priority = PriorityCycler.UiPriority.Highlighted;
 
-            var client = new GameScreenTranslator.Core.Foundry.AzureFoundryClient(settings.Providers.AzureFoundry);
+            var client = new GameScreenTranslator.Core.Foundry.AzureFoundryClient(settings.Providers.AzureFoundry, prompts);
 
             var response = await client.TranslateCycleAsync(
                 screenshot: result.Screenshot,
@@ -157,10 +159,12 @@ try
 
         AppSettings settings;
         SpeechLanguageConfig speechConfig;
+        PromptPack prompts;
         try
         {
             settings = AppSettingsLoader.Load(baseDir);
             ConfigureLogging(settings);
+            prompts = PromptPackLoader.Load(baseDir);
             speechConfig = SpeechLanguageConfigLoader.Load(baseDir, settings.Providers.AzureSpeech.ConfigPath);
         }
         catch (Exception ex)
@@ -216,7 +220,7 @@ try
             cts.Cancel();
         };
 
-        await using var runner = new GameScreenTranslator.Core.App.HotkeyAppRunner(settings, speechConfig, baseDir);
+        await using var runner = new GameScreenTranslator.Core.App.HotkeyAppRunner(settings, speechConfig, prompts, baseDir);
         runner.Start();
         runner.Run(cts.Token);
 

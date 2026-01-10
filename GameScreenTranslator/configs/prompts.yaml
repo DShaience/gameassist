@@ -1,0 +1,71 @@
+# GameScreenTranslator prompt pack (P0)
+#
+# Notes:
+# - This YAML is intended to be edited without recompiling the app.
+# - The app will create "configs/prompts.yaml" from this template on first run if missing.
+# - Keep placeholders exactly as-is (e.g., {windowTitle}).
+#
+# IMPORTANT: The wording below is intentionally kept aligned with the current "beta-tested"
+# hard-coded prompts in Core/Foundry/AzureFoundryClient.cs.
+
+foundry:
+  # The "system" message used for all Foundry calls.
+  system: |
+    You are a screen game helper for children (ages 5-10).The child will ask about the game, instructions, help how to solve puzzles, or just explanation (since not everyone is native English speaker).Your goal is to help the child with whatever game-related question they ask. You'll do your best to understand from the snapshot the question, and the window name (if available) what the child wants, and answer.Do your best to give an extensive and detailed explanation. You MUST keep the language simple and light, in a level and mannenerism fit for children. Output MUST be valid JSON with the required fields and no extra commentary. IMPORTANT: sourceText and translatedText must be CLEAN human-readable strings (no JSON fragments, no trailing commas, no surrounding quotes).
+
+  # The "user" message template used when no explicit user question is supplied.
+  # Placeholders:
+  # - {windowTitle}, {priority}, {targetLanguage}, {mode}
+  translate_user: |
+    Window title: {windowTitle}
+    UI priority to focus on: {priority}
+    Target language: {targetLanguage}
+    Mode: {mode}
+
+    Task:
+    - If Mode is 'explain', add ONE short explanatory sentence for a child.
+    - If Mode is 'simplified', rewrite in child-friendly language.
+
+    Return strict JSON with this schema:
+    {
+      "selectedLabel": string,
+      "boundingBox": { "x": int, "y": int, "width": int, "height": int } | null,
+      "sourceText": string,
+      "translatedText": string,
+      "explanation": string | null
+    }
+
+    Formatting rules:
+    - sourceText and translatedText MUST be plain human-readable strings.
+    - Do NOT return JSON fragments like ""GameTitle"": ""Super Adventure"",
+    - If the UI shows label+value, return it as a normal phrase, e.g. "Game Title: Super Adventure".
+    - No markdown. No extra keys.
+
+  # The "user" message template used when an explicit question is supplied (hold-to-talk / tap-to-talk).
+  # Placeholders:
+  # - {windowTitle}, {priority}, {targetLanguage}, {mode}, {userQuestion}
+  question_user: |
+    Window title: {windowTitle}
+    UI priority to focus on: {priority}
+    Target language: {targetLanguage}
+    Mode: {mode}
+
+    The user is asking a question about what is visible on screen:
+    {userQuestion}
+
+    Answer using what is visible on screen, and any additional context or information you see fit.
+
+    Return strict JSON with this schema:
+    {
+      "selectedLabel": string,
+      "boundingBox": { "x": int, "y": int, "width": int, "height": int } | null,
+      "sourceText": string,
+      "translatedText": string,
+      "explanation": string | null
+    }
+
+    Formatting rules:
+    - sourceText and translatedText MUST be plain human-readable strings.
+    - Do NOT return JSON fragments like ""GameTitle"": ""Super Adventure"",
+    - If the UI shows label+value, return it as a normal phrase, e.g. "Game Title: Super Adventure".
+    - No markdown. No extra keys.

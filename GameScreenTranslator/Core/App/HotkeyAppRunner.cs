@@ -20,6 +20,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 {
     private readonly AppSettings _settings;
     private readonly SpeechLanguageConfig _speechConfig;
+    private readonly PromptPack _prompts;
 
     private readonly ActiveWindowCapture _capturer = new();
     private readonly ScreenStateManager _state = new();
@@ -44,14 +45,15 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     private int _stopHotkeyId;
     private int _tapQuestionHotkeyId;
 
-    public HotkeyAppRunner(AppSettings settings, SpeechLanguageConfig speechConfig, string baseDirectory)
+    public HotkeyAppRunner(AppSettings settings, SpeechLanguageConfig speechConfig, PromptPack prompts, string baseDirectory)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _speechConfig = speechConfig ?? throw new ArgumentNullException(nameof(speechConfig));
+        _prompts = prompts ?? throw new ArgumentNullException(nameof(prompts));
 
         _interactionLogger = new InteractionLogger(_settings, baseDirectory);
 
-        _foundryClient = new AzureFoundryClient(_settings.Providers.AzureFoundry);
+        _foundryClient = new AzureFoundryClient(_settings.Providers.AzureFoundry, _prompts);
         _tts = new AzureSpeechTtsService(_speechConfig);
         _stt = new AzureSpeechSttService(_speechConfig);
     }

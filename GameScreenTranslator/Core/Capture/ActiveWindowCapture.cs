@@ -80,13 +80,28 @@ public sealed class ActiveWindowCapture
             if (!ok)
             {
                 // Fallback: screen copy (may capture occluded portions; acceptable for P0).
-                graphics.CopyFromScreen(
-                    rect.Left,
-                    rect.Top,
-                    0,
-                    0,
-                    new System.Drawing.Size(width, height),
-                    CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
+                // NOTE: On newer System.Drawing builds, combining flags (SourceCopy|CaptureBlt) can throw
+                // InvalidEnumArgumentException. Retry with SourceCopy-only for compatibility.
+                try
+                {
+                    graphics.CopyFromScreen(
+                        rect.Left,
+                        rect.Top,
+                        0,
+                        0,
+                        new System.Drawing.Size(width, height),
+                        CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
+                }
+                catch (System.ComponentModel.InvalidEnumArgumentException)
+                {
+                    graphics.CopyFromScreen(
+                        rect.Left,
+                        rect.Top,
+                        0,
+                        0,
+                        new System.Drawing.Size(width, height),
+                        CopyPixelOperation.SourceCopy);
+                }
 
                 if (IsMostlyBlack(bmp))
                     Console.WriteLine("[Capture] CopyFromScreen also looks black (window may be GPU/overlay protected).");
@@ -99,13 +114,26 @@ public sealed class ActiveWindowCapture
             if (IsMostlyBlack(bmp))
             {
                 Console.WriteLine("[Capture] PrintWindow returned black image; falling back to CopyFromScreen.");
-                graphics.CopyFromScreen(
-                    rect.Left,
-                    rect.Top,
-                    0,
-                    0,
-                    new System.Drawing.Size(width, height),
-                    CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
+                try
+                {
+                    graphics.CopyFromScreen(
+                        rect.Left,
+                        rect.Top,
+                        0,
+                        0,
+                        new System.Drawing.Size(width, height),
+                        CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
+                }
+                catch (System.ComponentModel.InvalidEnumArgumentException)
+                {
+                    graphics.CopyFromScreen(
+                        rect.Left,
+                        rect.Top,
+                        0,
+                        0,
+                        new System.Drawing.Size(width, height),
+                        CopyPixelOperation.SourceCopy);
+                }
 
                 if (IsMostlyBlack(bmp))
                     Console.WriteLine("[Capture] CopyFromScreen also looks black (window may be GPU/overlay protected).");
