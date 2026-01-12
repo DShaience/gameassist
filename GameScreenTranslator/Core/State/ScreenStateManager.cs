@@ -1,13 +1,15 @@
 using System;
 using System.Collections.Generic;
 
+using GameScreenTranslator.Core.Abstractions;
+
 namespace GameScreenTranslator.Core.State;
 
 /// <summary>
 /// Tracks state per "screen signature" to support cycling logic and
 /// "don't repeat what was already spoken on this screen".
 /// </summary>
-public sealed class ScreenStateManager
+public sealed class ScreenStateManager : IScreenStateManager
 {
     private readonly Dictionary<ulong, ScreenState> _states = new();
 

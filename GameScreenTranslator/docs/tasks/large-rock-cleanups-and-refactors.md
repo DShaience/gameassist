@@ -1,15 +1,17 @@
 # Large-rock cleanups & refactors (backlog)
 
-Purpose: capture high-level refactor opportunities to improve readability, testability, and maintainability. Keep this list “big rocks” only; break into smaller tasks when we prioritize an item.
+Purpose: capture high-level refactor opportunities to improve readability, testability, and maintainability. Keep this list "big rocks" only; break into smaller tasks when we prioritize an item.
 
 ---
 
 ## 1) Split `HotkeyAppRunner` into flows + a thin orchestrator
 
-**Problem:** `HotkeyAppRunner` owns hotkey wiring, keyboard hooks, screen capture, screen-state cycling, conversation history, STT/TTS lifecycles, Foundry calls, debug capture saving, and interaction logging. This creates a “god class” that is difficult to test and evolve safely.
+**Status:** Done (hold-to-talk removed; tap-to-talk retained; pipeline scaffolding + tests added)
+
+**Problem:** `HotkeyAppRunner` owns hotkey wiring, keyboard hooks, screen capture, screen-state cycling, conversation history, STT/TTS lifecycles, Foundry calls, debug capture saving, and interaction logging. This creates a "god class" that is difficult to test and evolve safely.
 
 **Suggestion:**
-- Extract dedicated “flow” classes (single responsibility, easy to unit test):
+- Extract dedicated "flow" classes (single responsibility, easy to unit test):
   - `TranslateCycleFlow` (capture → signature/state → Foundry → TTS → interaction log)
   - `TapToTalkQuestionFlow`
   - `ResetConversationFlow`
@@ -17,7 +19,7 @@ Purpose: capture high-level refactor opportunities to improve readability, testa
 - Keep `HotkeyAppRunner` as a coordinator that maps hotkeys/events to flows.
 
 **Design note (to reduce duplication): Pipeline + Context**
-Instead of “one big method per flow” (which duplicates timers, try/catch, logging, disposal), use a small pipeline framework:
+Instead of "one big method per flow" (which duplicates timers, try/catch, logging, disposal), use a small pipeline framework:
 
 - Each flow has a `*Context` (holds capture, question, response, timers, error, etc.)
 - Each flow is composed from reusable `IOperationStep<TContext>` steps (capture, model call, speak, log, cleanup, etc.)
@@ -31,20 +33,39 @@ This is **TDD-friendly**: steps are small units with fakes.
 
 ## 2) Introduce interfaces for IO/external dependencies + simple DI
 
+**Status:** Done – interfaces added and implemented; ready for injection
+
 **Problem:** Many dependencies are constructed directly (`new AzureFoundryClient`, `new ActiveWindowCapture`, etc.), which locks in implementations and makes testing orchestration logic hard.
 
 **Suggestion:**
 - Add small interfaces and inject them into flows/runner:
   - `ICaptureService`, `IFoundryClient`, `ITtsService`, `ISttService`, `IInteractionLogger`, `IScreenStateManager`, `IClock` (optional)
 - Use either:
-  - “manual DI” (construct in `Program.cs`), or
+  - "manual DI" (construct in `Program.cs`), or
   - `Microsoft.Extensions.DependencyInjection` for composition (no need for full Generic Host if you want to keep it light).
+
+**What was done:**
+- Created `GameScreenTranslator/Core/Abstractions/` folder with interfaces:
+  - `ICaptureService`, `IFoundryClient`, `ITtsService`, `ISttService`, `IInteractionLogger`, `IScreenStateManager`
+- Implemented interfaces on existing concrete classes:
+  - `ActiveWindowCapture : ICaptureService`
+  - `ScreenStateManager : IScreenStateManager`
+  - `InteractionLogger : IInteractionLogger`
+  - `AzureSpeechTtsService : ITtsService`
+  - `AzureSpeechSttService : ISttService`
+  - `AzureFoundryClient : IFoundryClient`
+- Build + tests pass. HotkeyAppRunner and Program.cs still use concrete types (optional follow-up: wire through interfaces for full DI).
 
 ---
 
 ## 3) Convert `Program.cs` to command/handler structure (remove the if/else chain)
 
+**Status:** Done – command pattern + centralized bootstrapping
+
 **Problem:** `Program.cs` mixes CLI mode routing with business logic and has repeated bootstrapping (resolve base dir, ensure config, load settings/prompts/speech, configure logging).
+
+**What "repeated bootstrapping" means:**
+Before the refactor, every if/else branch in Program.cs ran the same setup steps (resolve base dir → ensure template configs → load settings/prompts/speech → configure logging). If you added a new mode or changed the load order, you had to repeat or update multiple code paths. That's "repeated bootstrapping".
 
 **Suggestion:**
 - Introduce a simple command router pattern (or adopt `System.CommandLine`):
@@ -54,6 +75,22 @@ This is **TDD-friendly**: steps are small units with fakes.
   - `foundry-translate-once`
 - Centralize startup in a `RuntimeBootstrapper` that returns a typed `RuntimeContext`:
   - baseDir, settings, prompts, speech config, logs dir, etc.
+
+**What was done:**
+- Created `RuntimeBootstrapper` + `RuntimeContext` to run all startup once.
+- Added `ICliCommand` interface with `RequiresFullBootstrap` flag.
+- Implemented four command classes:
+  - `HotkeyModeCommand` (`--hotkey-mode`, default)
+  - `CaptureOnceCommand` (`--capture-once`)
+  - `CycleDemoCommand` (`--cycle-demo`)
+  - `FoundryTranslateOnceCommand` (`--foundry-translate-once`)
+- Rewrote `Program.cs` to:
+  1. Register all commands
+  2. Match the first arg (or default to `--hotkey-mode`)
+  3. Bootstrap once (only if the matched command needs it)
+  4. Run the matched command
+
+Command-line behavior is identical (`GameScreenTranslator.exe`, `--capture-once`, `--help`, etc.).
 
 ---
 
@@ -72,7 +109,7 @@ This is **TDD-friendly**: steps are small units with fakes.
 
 ## 5) Unify cross-cutting concerns: logging, debug output, error handling
 
-**Problem:** Mixed `Console.WriteLine` and `Log.*`, plus scattered “best-effort ignore” try/catch blocks, plus debug capture saving sprinkled into flow logic.
+**Problem:** Mixed `Console.WriteLine` and `Log.*`, plus scattered "best-effort ignore" try/catch blocks, plus debug capture saving sprinkled into flow logic.
 
 **Suggestion:**
 - Pick one logging approach:
@@ -101,19 +138,13 @@ This is **TDD-friendly**: steps are small units with fakes.
 
 ---
 
-## 7) Remove duplication between “hold-to-talk” and “tap-to-talk” question flows
+## 7) ~~Remove duplication between "hold-to-talk" and "tap-to-talk" question flows~~
 
-**Problem:** The two question pathways share most of the logic (capture, build context, send messages, speak, log) with minor differences in how the question text is obtained.
-
-**Suggestion:**
-- Create a single `QuestionFlow.RunAsync(QuestionInput)` where only the input acquisition varies:
-  - question source (STT continuous vs recognize-once)
-  - screenshot source (key-down snapshot vs immediate capture)
-- Keep shared logic in one place.
+**Status:** N/A – hold-to-talk was removed in item (1), so there's only one question flow (tap-to-talk). No duplication exists.
 
 ---
 
-## 8) Tests: re-balance toward “logic under change” and pure units
+## 8) Tests: re-balance toward "logic under change" and pure units
 
 **Problem:** Core risk/complexity sits in orchestration and normalization logic, but those are hard to unit test without seams (interfaces).
 
@@ -132,7 +163,7 @@ This is **TDD-friendly**: steps are small units with fakes.
 - Decide whether `samples/` are:
   - build artifacts of the repo (keep in solution but separate solution folder), or
   - reference examples (exclude from main build pipeline)
-- Consider keeping `Core` strictly “domain + services” and isolating platform-specific wiring (WinForms tray, keyboard hooks) in the app project.
+- Consider keeping `Core` strictly "domain + services" and isolating platform-specific wiring (WinForms tray, keyboard hooks) in the app project.
 - Align naming (`gamer-assisstant` vs `GameScreenTranslator`) if this repo will be long-lived.
 
 ---
@@ -143,4 +174,4 @@ This is **TDD-friendly**: steps are small units with fakes.
 2. **Add interfaces + injection** (enables safe refactors + proper unit tests)
 3. **Refactor `Program.cs` into command handlers + shared bootstrap** (removes branching + duplication)
 4. **Split `AzureFoundryClient` responsibilities** (clean boundaries)
-5. **Unify the question flows** (remove duplication)
+5. ~~**Unify the question flows** (remove duplication)~~ – N/A, only one question flow remains

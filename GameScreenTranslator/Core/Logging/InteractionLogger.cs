@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using GameScreenTranslator.Core.Abstractions;
 using GameScreenTranslator.Core.Configuration;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
@@ -12,7 +13,7 @@ using SixLabors.ImageSharp.PixelFormats;
 
 namespace GameScreenTranslator.Core.Logging;
 
-public sealed class InteractionLogger
+public sealed class InteractionLogger : IInteractionLogger
 {
     private readonly object _sync = new();
     private readonly string _logPath;

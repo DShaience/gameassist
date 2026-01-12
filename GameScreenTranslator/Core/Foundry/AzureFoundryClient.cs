@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using GameScreenTranslator.Core.Abstractions;
 using GameScreenTranslator.Core.Configuration;
 using GameScreenTranslator.Core.Conversation;
 using GameScreenTranslator.Core.Imaging;
@@ -17,7 +18,7 @@ using SixLabors.ImageSharp.PixelFormats;
 
 namespace GameScreenTranslator.Core.Foundry;
 
-public sealed class AzureFoundryClient
+public sealed class AzureFoundryClient : IFoundryClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

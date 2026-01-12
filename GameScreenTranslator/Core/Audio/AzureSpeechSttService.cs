@@ -2,13 +2,14 @@ using System;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using GameScreenTranslator.Core.Abstractions;
 using GameScreenTranslator.Core.Configuration;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 
 namespace GameScreenTranslator.Core.Audio;
 
-public sealed class AzureSpeechSttService : IAsyncDisposable
+public sealed class AzureSpeechSttService : ISttService, IAsyncDisposable
 {
     private readonly SpeechLanguageConfig _config;
     private readonly SpeechRecognizer _recognizer;

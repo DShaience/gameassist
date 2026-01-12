@@ -4,12 +4,13 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
+using GameScreenTranslator.Core.Abstractions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
 namespace GameScreenTranslator.Core.Capture;
 
-public sealed class ActiveWindowCapture
+public sealed class ActiveWindowCapture : ICaptureService
 {
     public WindowCaptureResult CaptureActiveWindow()
     {
