@@ -209,7 +209,6 @@ try
 
         Log.Info("Hotkey mode running. Press Ctrl+C to exit.");
         Log.Info("  Ctrl+Alt+T = Translate/Cycle");
-        Log.Info("  Ctrl+Alt+Q (hold) = Ask Question (record while held)");
         Log.Info("  Ctrl+Alt+W = Tap-to-talk test (auto-stops after ~1.5s silence)");
         Log.Info("  Ctrl+Alt+X = Stop Speaking");
         Log.Info("  Ctrl+Alt+R = Reset Conversation");
