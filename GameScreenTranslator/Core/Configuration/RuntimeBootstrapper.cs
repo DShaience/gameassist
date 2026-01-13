@@ -34,6 +34,9 @@ public static class RuntimeBootstrapper
         var prompts = PromptPackLoader.Load(baseDir);
         var speechConfig = SpeechLanguageConfigLoader.Load(baseDir, settings.Providers.AzureSpeech.ConfigPath);
 
+        // Validate all configs before returning — fail fast with actionable errors.
+        ConfigValidator.Validate(baseDir, settings, prompts, speechConfig);
+
         var logsDir = Path.Combine(baseDir, "logs");
 
         return new RuntimeContext(baseDir, logsDir, settings, prompts, speechConfig);

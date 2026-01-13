@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using GameScreenTranslator.Core.Configuration;
+using GameScreenTranslator.Core.Logging;
 
 namespace GameScreenTranslator.Core.Conversation;
 
@@ -270,7 +271,7 @@ public sealed class ConversationContextBuilder
             catch (Exception ex)
             {
                 // If summarization fails, fall back to truncation
-                Console.WriteLine($"[Conversation] Summarization failed, using truncation: {ex.Message}");
+                Log.Warn($"Summarization failed, using truncation: {ex.Message}");
                 _rollingSummary = TruncateToMaxChars(textToSummarize, _config.SummaryMaxChars);
             }
         }

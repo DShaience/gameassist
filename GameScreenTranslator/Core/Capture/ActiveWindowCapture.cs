@@ -5,6 +5,7 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
 using GameScreenTranslator.Core.Abstractions;
+using GameScreenTranslator.Core.Logging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -105,7 +106,7 @@ public sealed class ActiveWindowCapture : ICaptureService
                 }
 
                 if (IsMostlyBlack(bmp))
-                    Console.WriteLine("[Capture] CopyFromScreen also looks black (window may be GPU/overlay protected).");
+                    Log.Warn("CopyFromScreen also looks black (window may be GPU/overlay protected)");
 
                 return bmp;
             }
@@ -114,7 +115,7 @@ public sealed class ActiveWindowCapture : ICaptureService
             // Detect that and fallback to a screen copy of the window bounds.
             if (IsMostlyBlack(bmp))
             {
-                Console.WriteLine("[Capture] PrintWindow returned black image; falling back to CopyFromScreen.");
+                Log.Debug("PrintWindow returned black image; falling back to CopyFromScreen");
                 try
                 {
                     graphics.CopyFromScreen(
@@ -137,7 +138,7 @@ public sealed class ActiveWindowCapture : ICaptureService
                 }
 
                 if (IsMostlyBlack(bmp))
-                    Console.WriteLine("[Capture] CopyFromScreen also looks black (window may be GPU/overlay protected).");
+                    Log.Warn("CopyFromScreen also looks black (window may be GPU/overlay protected)");
             }
 
             return bmp;

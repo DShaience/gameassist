@@ -96,6 +96,8 @@ Command-line behavior is identical (`GameScreenTranslator.exe`, `--capture-once`
 
 ## 4) Centralize configuration loading + validation
 
+**Status:** Done – `ConfigValidator` + `ConfigValidationException` added
+
 **Problem:** Defaults/paths/validation are spread across templates and multiple call sites; errors are handled differently per mode.
 
 **Suggestion:**
@@ -105,9 +107,21 @@ Command-line behavior is identical (`GameScreenTranslator.exe`, `--capture-once`
   - load + validate settings/prompts/speech config
   - provide actionable validation errors (missing endpoint, missing deployment, missing speech config path, etc.)
 
+**What was done:**
+- Created `ConfigValidator.cs` with:
+  - `ConfigValidationException` (aggregates multiple errors into an actionable message)
+  - `ConfigValidator.Validate(baseDir, settings, prompts, speechConfig)` that checks:
+    - `Providers.AzureFoundry.Endpoint`, `ApiKey`, `LLM.VisionDeployment`
+    - `Translation.TargetLanguage`
+    - `prompts.yaml` has `foundry.system` and `foundry.translate_user`
+    - Speech config file exists and has `AzureSpeech.ApiKey` + either `Endpoint` or `Region`
+- Integrated into `RuntimeBootstrapper.Load()` — app fails fast at startup with a clear message instead of crashing mid-operation.
+
 ---
 
 ## 5) Unify cross-cutting concerns: logging, debug output, error handling
+
+**Status:** Done – all Console.WriteLine replaced with Log.* calls
 
 **Problem:** Mixed `Console.WriteLine` and `Log.*`, plus scattered "best-effort ignore" try/catch blocks, plus debug capture saving sprinkled into flow logic.
 
@@ -121,6 +135,15 @@ Command-line behavior is identical (`GameScreenTranslator.exe`, `--capture-once`
   - embedding screenshots in interaction logs
   - including conversation context in logs
 - Introduce a tiny helper for intentional best-effort operations (so ignores are explicit and consistent).
+
+**What was done:**
+- Unified all output to the existing `Log` static class (keeps dependency light, no new packages).
+- Converted 49 `Console.WriteLine` calls across 3 files:
+  - `HotkeyAppRunner.cs` – all flow output now uses `Log.Info()`, `Log.Debug()`, `Log.Warn()`, `Log.Error()`
+  - `ActiveWindowCapture.cs` – capture fallback warnings use `Log.Warn()` / `Log.Debug()`
+  - `ConversationContextBuilder.cs` – summarization fallback uses `Log.Warn()`
+- Debug behaviors (raw Foundry output, capture saving, parsed response) are already gated with `Log.IsEnabled(LogLevel.Debug)`.
+- Existing `Logger.cs` retained as the single logging abstraction; configured via `appsettings.json` → `Logging.LogLevel`.
 
 ---
 

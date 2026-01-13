@@ -165,13 +165,13 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         {
             await _tts.StopAsync().ConfigureAwait(false);
 
-            Console.WriteLine("[Hotkey] Translate/Cycle triggered...");
+            Log.Info("Translate/Cycle triggered");
 
             captureSw = InteractionLogger.StartTimer();
             result = _capturer.CaptureActiveWindow();
             captureSw.Stop();
 
-            DebugPrintCapture("[Capture] Translate/Cycle", result);
+            DebugPrintCapture("Translate/Cycle capture", result);
             DebugSaveCapture(result, "translate_cycle");
 
             sig = ScreenSignature.Compute(result.WindowTitle, result.Screenshot);
@@ -191,10 +191,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                     downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
                     onRawModelContent: raw =>
                     {
-                        Console.WriteLine();
-                        Console.WriteLine("[Foundry Raw]");
-                        Console.WriteLine(raw);
-                        Console.WriteLine();
+                        Log.Debug("[Foundry Raw]");
+                        Log.Debug(raw);
                     },
                     cancellationToken: cts.Token)
                 .ConfigureAwait(false);
@@ -213,7 +211,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
                 spokenText = BuildSpeakText(response);
 
-                Console.WriteLine($"[TTS] {spokenText}");
+                Log.Info($"TTS: {spokenText}");
                 ttsSw = InteractionLogger.StartTimer();
                 await _tts.SpeakAsync(spokenText, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
                 ttsSw.Stop();
@@ -225,13 +223,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         {
             error = ex.ToString();
 
-            // Use ToString() so we also see the inner exception (HTTP status + body from AzureFoundryClient).
-            Console.WriteLine($"[Hotkey] Translate/Cycle failed:\n{ex}");
+            Log.Error(ex, "Translate/Cycle failed");
 
             try
             {
                 var fallback = FallbackSpeech.ResolveGenericErrorMessage(_settings, _settings.Translation.TargetLanguage);
-                Console.WriteLine($"[TTS] {fallback}");
+                Log.Info($"TTS (fallback): {fallback}");
                 await _tts.SpeakAsync(fallback, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
             }
             catch
@@ -290,14 +287,13 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             }
             catch (Exception logEx)
             {
-                Console.WriteLine($"[Log] Failed to write interaction log: {logEx.Message}");
+                Log.Warn($"Failed to write interaction log: {logEx.Message}");
             }
 
             if (result is not null)
                 result.Screenshot.Dispose();
         }
     }
-
 
     private async Task TapQuestionAutoStopAsync()
     {
@@ -328,22 +324,22 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             snap = _capturer.CaptureActiveWindow();
             captureSw.Stop();
 
-            DebugPrintCapture("[Capture] Tap-to-talk", snap);
+            DebugPrintCapture("Tap-to-talk capture", snap);
             DebugSaveCapture(snap, "tap_to_talk");
 
             sig = ScreenSignature.Compute(snap.WindowTitle, snap.Screenshot);
 
-            Console.WriteLine("[Hotkey] Tap-to-talk: speak now (auto-stops after 1.5s silence)...");
+            Log.Info("Tap-to-talk: speak now (auto-stops after 1.5s silence)...");
             question = await _stt.RecognizeOnceWithEndSilenceTimeoutAsync(1500, cts.Token).ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(question))
             {
-                Console.WriteLine("[Hotkey] No question recognized.");
+                Log.Info("No question recognized");
                 return;
             }
 
-            Console.WriteLine($"[Hotkey] Question: {question}");
-            Console.WriteLine($"[Hotkey] Asking about captured window: {snap.WindowTitle}");
+            Log.Info($"Question: {question}");
+            Log.Debug($"Asking about captured window: {snap.WindowTitle}");
 
             // Build conversation context
             var imageDataUrl = _foundryClient.PrepareScreenshotDataUrl(snap.Screenshot, _settings.ScreenCapture.DownscaleWidth);
@@ -364,7 +360,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                 _conversationStore,
                 cts.Token).ConfigureAwait(false);
 
-            Console.WriteLine($"[Conversation] Turn count: {conversationTurnCount}, Messages: {messages.Count}");
+            Log.Debug($"Conversation turn count: {conversationTurnCount}, Messages: {messages.Count}");
 
             conversationContextTextForLog = BuildConversationContextTextForLog(question);
 
@@ -373,10 +369,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                     messages,
                     onRawModelContent: raw =>
                     {
-                        Console.WriteLine();
-                        Console.WriteLine("[Foundry Raw]");
-                        Console.WriteLine(raw);
-                        Console.WriteLine();
+                        Log.Debug("[Foundry Raw]");
+                        Log.Debug(raw);
                     },
                     cancellationToken: cts.Token)
                 .ConfigureAwait(false);
@@ -390,7 +384,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             _conversationStore.AppendUser(question);
             _conversationStore.AppendAssistant(spokenText);
 
-            Console.WriteLine($"[TTS] {spokenText}");
+            Log.Info($"TTS: {spokenText}");
             ttsSw = InteractionLogger.StartTimer();
             await _tts.SpeakAsync(spokenText, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
             ttsSw.Stop();
@@ -398,12 +392,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         catch (Exception ex)
         {
             error = ex.ToString();
-            Console.WriteLine($"[Hotkey] Tap-to-talk flow failed:\n{ex}");
+            Log.Error(ex, "Tap-to-talk flow failed");
 
             try
             {
                 var fallback = FallbackSpeech.ResolveGenericErrorMessage(_settings, _settings.Translation.TargetLanguage);
-                Console.WriteLine($"[TTS] {fallback}");
+                Log.Info($"TTS (fallback): {fallback}");
                 await _tts.SpeakAsync(fallback, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
             }
             catch
@@ -463,7 +457,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             }
             catch (Exception logEx)
             {
-                Console.WriteLine($"[Log] Failed to write interaction log: {logEx.Message}");
+                Log.Warn($"Failed to write interaction log: {logEx.Message}");
             }
 
             snap?.Screenshot.Dispose();
@@ -474,13 +468,13 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     {
         try
         {
-            Console.WriteLine("[Hotkey] Reset conversation triggered...");
+            Log.Info("Reset conversation triggered");
 
             var turnCount = _conversationStore.TurnCount;
             _conversationStore.Reset();
             _conversationContextBuilder.ResetSummary();
 
-            Console.WriteLine($"[Conversation] Cleared {turnCount} turns.");
+            Log.Info($"Conversation cleared ({turnCount} turns)");
 
             // Speak confirmation
             var confirmationMessage = _settings.Translation.TargetLanguage.ToLowerInvariant() switch
@@ -504,12 +498,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             }
             catch (Exception logEx)
             {
-                Console.WriteLine($"[Log] Failed to write reset interaction log: {logEx.Message}");
+                Log.Warn($"Failed to write reset interaction log: {logEx.Message}");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Hotkey] Reset conversation failed: {ex.Message}");
+            Log.Error($"Reset conversation failed: {ex.Message}");
         }
     }
 
@@ -559,7 +553,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     {
         try
         {
-            Console.WriteLine("[Hotkey] Stop triggered...");
+            Log.Info("Stop triggered");
             CancelCurrentOperation();
 
             try
@@ -580,12 +574,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             }
             catch (Exception logEx)
             {
-                Console.WriteLine($"[Log] Failed to write stop interaction log: {logEx.Message}");
+                Log.Warn($"Failed to write stop interaction log: {logEx.Message}");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Hotkey] Stop failed: {ex.Message}");
+            Log.Error($"Stop failed: {ex.Message}");
         }
     }
 
@@ -659,27 +653,26 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
     private static void DebugPrintFoundryResponse(Core.Models.TranslateCycleResponse response)
     {
-        Console.WriteLine("[Foundry Parsed]");
-        Console.WriteLine($"  SelectedLabel: {response.SelectedLabel}");
-        Console.WriteLine($"  SourceText:    {response.SourceText}");
-        Console.WriteLine($"  TranslatedText:{response.TranslatedText}");
-        if (!string.IsNullOrWhiteSpace(response.Explanation))
-            Console.WriteLine($"  Explanation:   {response.Explanation}");
-        Console.WriteLine();
+        if (!Log.IsEnabled(LogLevel.Debug))
+            return;
+
+        Log.Debug($"[Foundry Parsed] SelectedLabel={response.SelectedLabel}, SourceText={response.SourceText}, TranslatedText={response.TranslatedText}" +
+            (string.IsNullOrWhiteSpace(response.Explanation) ? "" : $", Explanation={response.Explanation}"));
     }
 
     private static void DebugPrintCapture(string prefix, WindowCaptureResult capture)
     {
-        Console.WriteLine($"{prefix}:");
-        Console.WriteLine($"  Title:   {capture.WindowTitle}");
-        Console.WriteLine($"  Process: {capture.ProcessName ?? "(unknown)"} ({capture.ProcessId})");
-        Console.WriteLine($"  Hwnd:    0x{capture.Hwnd.ToInt64():X}");
-        Console.WriteLine($"  Size:    {capture.Screenshot.Width}x{capture.Screenshot.Height}");
-        Console.WriteLine();
+        if (!Log.IsEnabled(LogLevel.Debug))
+            return;
+
+        Log.Debug($"{prefix}: Title={capture.WindowTitle}, Process={capture.ProcessName ?? "(unknown)"} ({capture.ProcessId}), Hwnd=0x{capture.Hwnd.ToInt64():X}, Size={capture.Screenshot.Width}x{capture.Screenshot.Height}");
     }
 
     private static void DebugSaveCapture(WindowCaptureResult capture, string tag)
     {
+        if (!Log.IsEnabled(LogLevel.Debug))
+            return;
+
         try
         {
             var dir = Path.Combine(Directory.GetCurrentDirectory(), "logs", "captures");
@@ -690,12 +683,11 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             var path = Path.Combine(dir, $"{ts}_{tag}_{safeTitle}.png");
 
             capture.Screenshot.Save(path, new PngEncoder());
-            Console.WriteLine($"[Capture] Saved screenshot: {path}");
-            Console.WriteLine();
+            Log.Debug($"Saved screenshot: {path}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Capture] Failed to save screenshot: {ex.Message}");
+            Log.Warn($"Failed to save screenshot: {ex.Message}");
         }
     }
 
