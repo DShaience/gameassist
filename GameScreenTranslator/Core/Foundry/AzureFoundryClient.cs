@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using GameScreenTranslator.Core.Abstractions;
 using GameScreenTranslator.Core.Configuration;
 using GameScreenTranslator.Core.Conversation;
-using GameScreenTranslator.Core.Imaging;
 using GameScreenTranslator.Core.Models;
 using GameScreenTranslator.Core.State;
 using SixLabors.ImageSharp;
@@ -18,6 +17,10 @@ using SixLabors.ImageSharp.PixelFormats;
 
 namespace GameScreenTranslator.Core.Foundry;
 
+/// <summary>
+/// Client for Azure Foundry / OpenAI API.
+/// Orchestrates HTTP communication, request building, and response parsing.
+/// </summary>
 public sealed class AzureFoundryClient : IFoundryClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -28,20 +31,19 @@ public sealed class AzureFoundryClient : IFoundryClient
 
     private readonly HttpClient _http;
     private readonly AppSettings.AzureFoundrySettings _settings;
-    private readonly PromptPack _prompts;
+    private readonly FoundryRequestBuilder _requestBuilder;
 
     public AzureFoundryClient(AppSettings.AzureFoundrySettings settings, PromptPack prompts, HttpClient? httpClient = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-        _prompts = prompts ?? throw new ArgumentNullException(nameof(prompts));
+        if (prompts is null) throw new ArgumentNullException(nameof(prompts));
 
-        // Note: Azure Foundry "model inference" endpoint is OpenAI-compatible. We call:
-        //   POST /openai/deployments/{deployment}/chat/completions?api-version=...
+        _requestBuilder = new FoundryRequestBuilder(prompts);
+
         _http = httpClient ?? new HttpClient();
         _http.BaseAddress = new Uri(EnsureTrailingSlash(_settings.Endpoint));
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         _http.DefaultRequestHeaders.Add("api-key", _settings.ApiKey);
-
         _http.Timeout = TimeSpan.FromSeconds(_settings.LLM.TimeoutSeconds);
     }
 
@@ -50,12 +52,8 @@ public sealed class AzureFoundryClient : IFoundryClient
     /// </summary>
     public string PrepareScreenshotDataUrl(Image<Rgba32> screenshot, int? downscaleWidthOverride = null)
     {
-        if (screenshot is null) throw new ArgumentNullException(nameof(screenshot));
-
         var downscaleWidth = downscaleWidthOverride ?? 640;
-        using var downscaled = ImageDownscaler.DownscaleToWidth(screenshot, downscaleWidth);
-        var pngBytes = ImageDownscaler.EncodePng(downscaled);
-        return "data:image/png;base64," + Convert.ToBase64String(pngBytes);
+        return FoundryRequestBuilder.PrepareScreenshotDataUrl(screenshot, downscaleWidth);
     }
 
     /// <summary>
@@ -68,13 +66,13 @@ public sealed class AzureFoundryClient : IFoundryClient
         string mode,
         string? userQuestion = null)
     {
-        return BuildUserPrompt(windowTitle, priority, targetLanguage, mode, userQuestion, _prompts);
+        return _requestBuilder.BuildUserPromptText(windowTitle, priority, targetLanguage, mode, userQuestion);
     }
 
     /// <summary>
     /// Gets the system prompt text from the prompt pack.
     /// </summary>
-    public string GetSystemPrompt() => _prompts.Foundry.System;
+    public string GetSystemPrompt() => _requestBuilder.GetSystemPrompt();
 
     /// <summary>
     /// Sends a chat completion request with pre-built messages (for conversation context support).
@@ -91,37 +89,18 @@ public sealed class AzureFoundryClient : IFoundryClient
         if (string.IsNullOrWhiteSpace(deployment))
             throw new InvalidOperationException("Providers:AzureFoundry:LLM:VisionDeployment is required for vision calls.");
 
-        var requestMessages = new List<ChatMessage>();
-        foreach (var msg in messages)
-        {
-            var parts = new List<ChatMessagePart>();
-            if (!string.IsNullOrEmpty(msg.TextContent))
-            {
-                parts.Add(new ChatMessagePart { Type = "text", Text = msg.TextContent });
-            }
-            if (msg.HasImage)
-            {
-                parts.Add(new ChatMessagePart { Type = "image_url", ImageUrl = new ImageUrl { Url = msg.ImageDataUrl! } });
-            }
-
-            requestMessages.Add(new ChatMessage
-            {
-                Role = msg.Role,
-                Content = parts.ToArray()
-            });
-        }
+        var foundryMessages = FoundryRequestBuilder.BuildRequestMessages(messages);
 
         var request = new ChatCompletionsRequest
         {
-            Messages = requestMessages.ToArray(),
+            Messages = ConvertToApiMessages(foundryMessages),
             Temperature = 0.2,
             MaxTokens = 800,
             MaxCompletionTokens = null,
             ResponseFormat = new ResponseFormat { Type = "json_object" }
         };
 
-        var url = $"openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={Uri.EscapeDataString(_settings.ApiVersion)}";
-
+        var url = BuildUrl(deployment);
         return await ExecuteRequestAsync(request, url, onRawModelContent, cancellationToken).ConfigureAwait(false);
     }
 
@@ -133,86 +112,23 @@ public sealed class AzureFoundryClient : IFoundryClient
         if (string.IsNullOrWhiteSpace(textToSummarize))
             return "";
 
-        var deployment = _settings.LLM.VisionDeployment; // Use same deployment for simplicity
+        var deployment = _settings.LLM.VisionDeployment;
         if (string.IsNullOrWhiteSpace(deployment))
             throw new InvalidOperationException("Providers:AzureFoundry:LLM:VisionDeployment is required.");
 
-        var systemPrompt = "You are a helpful assistant that summarizes conversations. Create a brief, factual summary of the key points from the conversation below. Focus on: questions asked, answers given, and any important context about the game or situation. Keep the summary concise (under 300 words).";
+        var foundryMessages = FoundryRequestBuilder.BuildSummaryMessages(textToSummarize);
 
         var request = new ChatCompletionsRequest
         {
-            Messages =
-            [
-                new ChatMessage
-                {
-                    Role = "system",
-                    Content = [new ChatMessagePart { Type = "text", Text = systemPrompt }]
-                },
-                new ChatMessage
-                {
-                    Role = "user",
-                    Content = [new ChatMessagePart { Type = "text", Text = $"Please summarize this conversation:\n\n{textToSummarize}" }]
-                }
-            ],
+            Messages = ConvertToApiMessages(foundryMessages),
             Temperature = 0.3,
             MaxTokens = 400,
             MaxCompletionTokens = null,
             ResponseFormat = null // Plain text response
         };
 
-        var url = $"openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={Uri.EscapeDataString(_settings.ApiVersion)}";
-
-        var attempts = Math.Max(0, _settings.LLM.RetryAttempts) + 1;
-        Exception? last = null;
-
-        for (var i = 0; i < attempts; i++)
-        {
-            try
-            {
-                var requestJson = JsonSerializer.Serialize(request, JsonOptions);
-                using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-
-                using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
-                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    // Auto-fix common compatibility issues
-                    if ((int)response.StatusCode == 400)
-                    {
-                        if (responseBody.Contains("Unsupported parameter: 'max_tokens'", StringComparison.OrdinalIgnoreCase))
-                        {
-                            request.MaxCompletionTokens = request.MaxTokens;
-                            request.MaxTokens = null;
-                        }
-                        if (responseBody.Contains("Unsupported value: 'temperature'", StringComparison.OrdinalIgnoreCase)
-                            || responseBody.Contains("temperature", StringComparison.OrdinalIgnoreCase) &&
-                               responseBody.Contains("Only the default (1) value is supported", StringComparison.OrdinalIgnoreCase))
-                        {
-                            request.Temperature = null;
-                        }
-                    }
-                    throw new InvalidOperationException($"Summary generation failed: HTTP {(int)response.StatusCode}. Body: {responseBody}");
-                }
-
-                var parsed = JsonSerializer.Deserialize<ChatCompletionsResponse>(responseBody, JsonOptions)
-                             ?? throw new InvalidOperationException("Summary call returned empty response.");
-
-                var modelContent = parsed.Choices?[0]?.Message?.Content;
-                return modelContent?.Trim() ?? "";
-            }
-            catch (Exception ex) when (i < attempts - 1)
-            {
-                last = ex;
-                await Task.Delay(200 * (i + 1), cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                last = ex;
-            }
-        }
-
-        throw new InvalidOperationException("Summary generation failed after retries.", last);
+        var url = BuildUrl(deployment);
+        return await ExecuteSummaryRequestAsync(request, url, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<TranslateCycleResponse> TranslateCycleAsync(
@@ -236,53 +152,25 @@ public sealed class AzureFoundryClient : IFoundryClient
             throw new InvalidOperationException("Providers:AzureFoundry:LLM:VisionDeployment is required for vision calls.");
 
         var downscaleWidth = downscaleWidthOverride ?? 640;
-        using var downscaled = ImageDownscaler.DownscaleToWidth(screenshot, downscaleWidth);
-        var pngBytes = ImageDownscaler.EncodePng(downscaled);
-        var dataUrl = "data:image/png;base64," + Convert.ToBase64String(pngBytes);
+        var imageDataUrl = FoundryRequestBuilder.PrepareScreenshotDataUrl(screenshot, downscaleWidth);
 
-        var systemText = _prompts.Foundry.System;
-
-        var userText = BuildUserPrompt(windowTitle, priority, targetLanguage, mode, userQuestion, _prompts);
+        var foundryMessages = _requestBuilder.BuildTranslateMessages(
+            windowTitle, priority, targetLanguage, mode, userQuestion, imageDataUrl);
 
         var request = new ChatCompletionsRequest
         {
-            Messages =
-            [
-                new()
-                {
-                    Role = "system",
-                    Content =
-                    [
-                        new() { Type = "text", Text = systemText }
-                    ]
-                },
-                new()
-                {
-                    Role = "user",
-                    Content =
-                    [
-                        new() { Type = "text", Text = userText },
-                        new() { Type = "image_url", ImageUrl = new ImageUrl { Url = dataUrl } }
-                    ]
-                }
-            ],
-            // Some models (e.g. GPT-5.x) reject non-default temperature values.
-            // We'll start with a low temperature, and auto-fallback to "omit" if rejected.
+            Messages = ConvertToApiMessages(foundryMessages),
             Temperature = 0.2,
-
-            // Compatibility note:
-            // Some newer models (e.g. GPT-5.x) reject "max_tokens" and require "max_completion_tokens".
             MaxTokens = 800,
             MaxCompletionTokens = null,
-
-            // Most OpenAI-compatible endpoints support this. If not, we can remove and rely on prompt-only.
             ResponseFormat = new ResponseFormat { Type = "json_object" }
         };
 
-        var url = $"openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={Uri.EscapeDataString(_settings.ApiVersion)}";
-
+        var url = BuildUrl(deployment);
         return await ExecuteRequestAsync(request, url, onRawModelContent, cancellationToken).ConfigureAwait(false);
     }
+
+    #region HTTP Execution
 
     private async Task<TranslateCycleResponse> ExecuteRequestAsync(
         ChatCompletionsRequest request,
@@ -290,7 +178,6 @@ public sealed class AzureFoundryClient : IFoundryClient
         Action<string>? onRawModelContent,
         CancellationToken cancellationToken)
     {
-
         var attempts = Math.Max(0, _settings.LLM.RetryAttempts) + 1;
         Exception? last = null;
 
@@ -306,29 +193,7 @@ public sealed class AzureFoundryClient : IFoundryClient
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    // Auto-fix common compatibility issues and retry.
-                    if ((int)response.StatusCode == 400)
-                    {
-                        if (responseBody.Contains("Unsupported parameter: 'max_tokens'", StringComparison.OrdinalIgnoreCase))
-                        {
-                            request.MaxCompletionTokens = request.MaxTokens;
-                            request.MaxTokens = null;
-                        }
-
-                        if (responseBody.Contains("Unsupported parameter: 'response_format'", StringComparison.OrdinalIgnoreCase))
-                        {
-                            request.ResponseFormat = null;
-                        }
-
-                        if (responseBody.Contains("Unsupported value: 'temperature'", StringComparison.OrdinalIgnoreCase)
-                            || responseBody.Contains("temperature", StringComparison.OrdinalIgnoreCase) &&
-                               responseBody.Contains("Only the default (1) value is supported", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Omitting temperature typically uses the model default (1).
-                            request.Temperature = null;
-                        }
-                    }
-
+                    ApplyCompatibilityFixes(request, response, responseBody);
                     throw new InvalidOperationException($"Foundry call failed: HTTP {(int)response.StatusCode} {response.ReasonPhrase}. Body: {responseBody}");
                 }
 
@@ -345,7 +210,7 @@ public sealed class AzureFoundryClient : IFoundryClient
                 if (output is null)
                     throw new InvalidOperationException("Model content could not be parsed as TranslateCycleResponse JSON.");
 
-                NormalizeOutput(output);
+                FoundryResponseParser.NormalizeOutput(output);
                 return output;
             }
             catch (Exception ex) when (i < attempts - 1)
@@ -362,103 +227,105 @@ public sealed class AzureFoundryClient : IFoundryClient
         throw new InvalidOperationException("Foundry call failed after retries.", last);
     }
 
-    private static string BuildUserPrompt(
-        string windowTitle,
-        PriorityCycler.UiPriority priority,
-        string targetLanguage,
-        string mode,
-        string? userQuestion,
-        PromptPack prompts)
+    private async Task<string> ExecuteSummaryRequestAsync(
+        ChatCompletionsRequest request,
+        string url,
+        CancellationToken cancellationToken)
     {
-        var template = string.IsNullOrWhiteSpace(userQuestion)
-            ? prompts.Foundry.TranslateUser
-            : prompts.Foundry.QuestionUser;
+        var attempts = Math.Max(0, _settings.LLM.RetryAttempts) + 1;
+        Exception? last = null;
 
-        var values = new Dictionary<string, string?>
+        for (var i = 0; i < attempts; i++)
         {
-            ["windowTitle"] = windowTitle,
-            ["priority"] = priority.ToString(),
-            ["targetLanguage"] = targetLanguage,
-            ["mode"] = mode,
-            ["userQuestion"] = userQuestion
-        };
+            try
+            {
+                var requestJson = JsonSerializer.Serialize(request, JsonOptions);
+                using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
-        return PromptTemplate.Render(template, values);
-    }
+                using var response = await _http.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
-    private static void NormalizeOutput(TranslateCycleResponse output)
-    {
-        output.SelectedLabel = CleanSimple(output.SelectedLabel);
-        output.SourceText = CleanUiText(output.SourceText);
-        output.TranslatedText = CleanUiText(output.TranslatedText);
-        output.Explanation = output.Explanation is null ? null : CleanSimple(output.Explanation);
-    }
+                if (!response.IsSuccessStatusCode)
+                {
+                    ApplyCompatibilityFixes(request, response, responseBody);
+                    throw new InvalidOperationException($"Summary generation failed: HTTP {(int)response.StatusCode}. Body: {responseBody}");
+                }
 
-    private static string CleanSimple(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return "";
+                var parsed = JsonSerializer.Deserialize<ChatCompletionsResponse>(responseBody, JsonOptions)
+                             ?? throw new InvalidOperationException("Summary call returned empty response.");
 
-        return StripWrapping(value).Trim();
-    }
-
-    private static string CleanUiText(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return "";
-
-        var s = StripWrapping(value).Trim().TrimEnd(',');
-
-        // Heuristic: model sometimes returns a JSON-like key/value fragment.
-        // Example:  "GameTitle": "Super Adventure",
-        // Convert to: GameTitle: Super Adventure
-        if (TryExtractKeyValue(s, out var key, out var val))
-        {
-            key = StripWrapping(key).Trim();
-            val = StripWrapping(val).Trim();
-            if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(val))
-                return $"{key}: {val}";
+                var modelContent = parsed.Choices?[0]?.Message?.Content;
+                return modelContent?.Trim() ?? "";
+            }
+            catch (Exception ex) when (i < attempts - 1)
+            {
+                last = ex;
+                await Task.Delay(200 * (i + 1), cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+            }
         }
 
-        return s;
+        throw new InvalidOperationException("Summary generation failed after retries.", last);
     }
 
-    private static bool TryExtractKeyValue(string s, out string key, out string value)
+    /// <summary>
+    /// Auto-fix common API compatibility issues and allow retry.
+    /// </summary>
+    private static void ApplyCompatibilityFixes(ChatCompletionsRequest request, HttpResponseMessage response, string responseBody)
     {
-        key = "";
-        value = "";
+        if ((int)response.StatusCode != 400)
+            return;
 
-        var idx = s.IndexOf(':');
-        if (idx <= 0 || idx >= s.Length - 1)
-            return false;
+        if (responseBody.Contains("Unsupported parameter: 'max_tokens'", StringComparison.OrdinalIgnoreCase))
+        {
+            request.MaxCompletionTokens = request.MaxTokens;
+            request.MaxTokens = null;
+        }
 
-        // Avoid times like "12:34" by requiring at least one quote or letter around the split.
-        var left = s[..idx].Trim();
-        var right = s[(idx + 1)..].Trim().TrimEnd(',');
+        if (responseBody.Contains("Unsupported parameter: 'response_format'", StringComparison.OrdinalIgnoreCase))
+        {
+            request.ResponseFormat = null;
+        }
 
-        if (left.Length == 0 || right.Length == 0)
-            return false;
-
-        // Require that the left side looks like a label (letters/quotes/underscores/spaces).
-        // This is intentionally loose.
-        key = left;
-        value = right;
-        return true;
+        if (responseBody.Contains("Unsupported value: 'temperature'", StringComparison.OrdinalIgnoreCase)
+            || (responseBody.Contains("temperature", StringComparison.OrdinalIgnoreCase) &&
+                responseBody.Contains("Only the default (1) value is supported", StringComparison.OrdinalIgnoreCase)))
+        {
+            request.Temperature = null;
+        }
     }
 
-    private static string StripWrapping(string s)
+    #endregion
+
+    #region Helpers
+
+    private string BuildUrl(string deployment)
     {
-        var t = s.Trim();
+        return $"openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={Uri.EscapeDataString(_settings.ApiVersion)}";
+    }
 
-        // Remove wrapping backticks (rare but happens)
-        if (t.Length >= 2 && t[0] == '`' && t[^1] == '`')
-            t = t[1..^1].Trim();
+    private static ChatMessage[] ConvertToApiMessages(List<FoundryMessage> foundryMessages)
+    {
+        var result = new ChatMessage[foundryMessages.Count];
+        for (var i = 0; i < foundryMessages.Count; i++)
+        {
+            var fm = foundryMessages[i];
+            var parts = new ChatMessagePart[fm.Parts.Count];
+            for (var j = 0; j < fm.Parts.Count; j++)
+            {
+                var p = fm.Parts[j];
+                parts[j] = p.Type == "image_url"
+                    ? new ChatMessagePart { Type = "image_url", ImageUrl = new ImageUrl { Url = p.ImageUrl! } }
+                    : new ChatMessagePart { Type = "text", Text = p.Text };
+            }
 
-        // Remove wrapping quotes
-        if (t.Length >= 2 && t[0] == '"' && t[^1] == '"')
-            t = t[1..^1].Trim();
+            result[i] = new ChatMessage { Role = fm.Role, Content = parts };
+        }
 
-        return t;
+        return result;
     }
 
     private static string EnsureTrailingSlash(string endpoint)
@@ -469,6 +336,10 @@ public sealed class AzureFoundryClient : IFoundryClient
         return endpoint.EndsWith("/", StringComparison.Ordinal) ? endpoint : endpoint + "/";
     }
 
+    #endregion
+
+    #region API DTOs
+
     private sealed class ChatCompletionsRequest
     {
         [JsonPropertyName("messages")]
@@ -477,7 +348,6 @@ public sealed class AzureFoundryClient : IFoundryClient
         [JsonPropertyName("temperature")]
         public double? Temperature { get; set; } = 0.2;
 
-        // Some models use max_tokens, others require max_completion_tokens.
         [JsonPropertyName("max_tokens")]
         public int? MaxTokens { get; set; } = 800;
 
@@ -538,4 +408,6 @@ public sealed class AzureFoundryClient : IFoundryClient
         [JsonPropertyName("content")]
         public string? Content { get; set; }
     }
+
+    #endregion
 }

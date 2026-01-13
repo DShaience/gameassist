@@ -60,6 +60,8 @@ public sealed class AppSettings
         public int DuckDurationMs { get; set; } = 300;
         public double TTSSpeed { get; set; } = 1.0;
 
+        public EarconsSettings Earcons { get; set; } = new();
+
         /// <summary>
         /// Fallback messages spoken when the app cannot complete an action.
         /// Keys are language names like "Hebrew", "Russian", or locales like "he-IL", "ru-RU".
@@ -83,6 +85,49 @@ public sealed class AppSettings
         /// When speech synthesis or model calls fail, use a generic error message from FallbackMessagesByLanguage.
         /// </summary>
         public string GenericErrorMessageKey { get; set; } = "Hebrew";
+
+        public sealed class EarconsSettings
+        {
+            /// <summary>
+            /// If true, the app may play short non-speech audio cues (earcons)
+            /// to indicate state changes like "thinking".
+            /// </summary>
+            public bool Enabled { get; set; } = true;
+
+            /// <summary>
+            /// Plays a short audio cue when STT recording begins (tap-to-talk).
+            /// Helps the user know the hotkey was recognized.
+            /// </summary>
+            public bool ListeningChimeEnabled { get; set; } = true;
+
+            /// <summary>
+            /// Path to the MP3/WAV file for the listening chime.
+            /// Relative paths are resolved from the runtime base directory.
+            /// </summary>
+            public string ListeningChimePath { get; set; } = "Assets/Sounds/tap-notification-357575.mp3";
+
+            /// <summary>
+            /// Plays a soft chime after STT ends to confirm the app is processing.
+            /// </summary>
+            public bool ThinkingChimeEnabled { get; set; } = true;
+
+            /// <summary>
+            /// Delay before playing the thinking chime.
+            /// Helps avoid chimes when the model responds very fast.
+            /// </summary>
+            public int ThinkingDelayMs { get; set; } = 400;
+
+            /// <summary>
+            /// Optional cancel/stop blip. Off by default to keep "stop" truly silent.
+            /// </summary>
+            public bool CancelChimeEnabled { get; set; } = false;
+
+            /// <summary>
+            /// Relative loudness of earcons (0..1). Implemented as waveform amplitude for synthetic tones,
+            /// and as volume multiplier for MP3 playback.
+            /// </summary>
+            public double Volume { get; set; } = 0.12;
+        }
     }
 
     public sealed class LoggingSettings

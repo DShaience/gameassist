@@ -90,12 +90,9 @@ Normalization:
 - Concurrency control: a `SemaphoreSlim` gate ensures one TTS operation at a time
 
 ### STT behavior (P0)
-Two interaction styles:
-1. **Hold-to-talk** (`Ctrl+Alt+Q`)
-   - Start continuous STT on key-down
-   - Stop and return recognized text on key-up
-2. **Tap-to-talk** (`Ctrl+Alt+W`)
-   - Recognize once with an end-silence timeout (default used: ~1500ms)
+Interaction style:
+- **Tap-to-talk** (`Ctrl+Alt+W`)
+  - Recognize once with an end-silence timeout (default used: ~1500ms)
 
 Language handling (expected):
 - Candidate languages and optional auto language detection configured in `speech_language_config.json`.

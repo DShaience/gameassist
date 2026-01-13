@@ -1,5 +1,5 @@
 # Runtime layout & Configuration (P0)
-Last updated: 2026-01-10
+Last updated: 2026-01-13
 
 ## Runtime base directory (where configs/logs live)
 At runtime the app resolves a `baseDir` (see `ResolveRuntimeBaseDir()` in `GameScreenTranslator/Program.cs`):
@@ -17,8 +17,9 @@ On startup, `ConfigBootstrapper.EnsureConfigFilesExist(baseDir)` creates missing
 - `appsettings.json` from embedded `appsettings.template.json`
 - `speech_language_config.json` from embedded `speech_language_config.template.json`
 - `configs/prompts.yaml` from embedded `prompts.template.yaml`
+- `Assets/Sounds/tap-notification-357575.mp3` from embedded sound asset (earcons)
 
-This enables a “drop the EXE into a folder and run” experience.
+This enables a "drop the EXE into a folder and run" experience.
 
 ## Config files
 ### 1) `appsettings.json` (main app settings)
@@ -41,6 +42,14 @@ Key sections (P0):
   - Note: not all keys are currently wired in hotkey runtime (see `40_hotkeys_and_interaction.md`)
 - `Audio`
   - Ducking settings (P0 mostly not implemented end-to-end)
+  - `Earcons` (audio cues for state changes)
+    - `Enabled` (master toggle)
+    - `ListeningChimeEnabled` (play when STT starts)
+    - `ListeningChimePath` (MP3/WAV file path, default `Assets/Sounds/tap-notification-357575.mp3`)
+    - `ThinkingChimeEnabled` (play while waiting for model)
+    - `ThinkingDelayMs` (delay before thinking chime, default 400ms)
+    - `CancelChimeEnabled` (play on stop, default false)
+    - `Volume` (0.0-1.0, default 0.12)
   - `FallbackMessagesByLanguage` + `GenericErrorMessageKey`
   - `CaptureFailedMessage`
 - `ScreenCapture`
@@ -65,7 +74,7 @@ Key sections:
 ### 3) Prompt pack (`configs/prompts.yaml`)
 #### Why there are two files
 - `configs/prompts.template.yaml`
-  - “factory default” prompt pack
+  - "factory default" prompt pack
   - embedded into the EXE for first-run bootstrap
   - should be committed/updated when defaults change
 - `configs/prompts.yaml`
@@ -90,9 +99,30 @@ Placeholders supported (string replace):
 
 Renderer: `Core/Configuration/PromptTemplate.Render()`
 
+### 4) Sound assets (`Assets/Sounds/`)
+Earcon audio files for state feedback:
+- `tap-notification-357575.mp3` - default listening chime (plays when tap-to-talk starts)
+
+Sound files are:
+- Embedded in the EXE as resources
+- Extracted on first run if missing
+- Configurable via `Audio.Earcons.ListeningChimePath`
+
+Supported formats: MP3, WAV (via NAudio library)
+
+## Friends distribution package
+For friends-only testing, use `scripts/publish-friends.ps1` to create a ZIP containing:
+- `GameScreenTranslator.exe` (self-contained single-file)
+- `appsettings.json` (with your API keys)
+- `speech_language_config.json` (with your Azure Speech keys)
+- `configs/prompts.yaml`
+- `Assets/Sounds/tap-notification-357575.mp3`
+- `QUICKSTART.txt` (setup instructions)
+
 ## Git / source control expectations
 - Secrets (API keys) **must not be committed**.
 - Repo typically commits:
   - `*.template.json` and `configs/prompts.template.yaml`
 - Repo may or may not commit `configs/prompts.yaml` depending on desired workflow.
   - Current repo includes it for convenience; consider git-ignoring it if local prompt edits should not be committed.
+- `dist/` directory (build outputs) should be gitignored.

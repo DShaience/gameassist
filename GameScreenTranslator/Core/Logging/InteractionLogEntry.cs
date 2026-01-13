@@ -7,7 +7,7 @@ public sealed class InteractionLogEntry
     public DateTimeOffset TimestampUtc { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>
-    /// E.g. translate_cycle, question_hold, question_tap, stop
+    /// E.g. translate_cycle, question_tap, stop
     /// </summary>
     public string InteractionType { get; set; } = "";
 

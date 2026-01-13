@@ -41,7 +41,7 @@ Implications:
 ## What gets logged (examples)
 Depending on interaction type, logs can include:
 - `timestamp_utc`
-- `interaction_type` (e.g., `translate_cycle`, `question_hold`, `question_tap`, `stop`)
+- `interaction_type` (e.g., `translate_cycle`, `question_tap`, `stop`)
 - Window/process info:
   - `window_title`, `process_name`, `process_id`, `hwnd_hex`
 - Screen/cycle info:

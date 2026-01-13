@@ -30,9 +30,9 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     private readonly AzureFoundryClient _foundryClient;
     private readonly AzureSpeechTtsService _tts;
     private readonly AzureSpeechSttService _stt;
+    private readonly EarconPlayer _earcons;
 
     private readonly Win32HotkeyManager _hotkeys = new();
-    private readonly GlobalKeyboardHook _keyboardHook = new();
 
     private readonly InteractionLogger _interactionLogger;
 
@@ -63,6 +63,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         _foundryClient = new AzureFoundryClient(_settings.Providers.AzureFoundry, _prompts);
         _tts = new AzureSpeechTtsService(_speechConfig);
         _stt = new AzureSpeechSttService(_speechConfig);
+        _earcons = new EarconPlayer(_settings.Audio.Earcons, baseDirectory);
 
         // Initialize conversation context builder with summarizer
         var conversationConfig = new ConversationContextConfig
@@ -315,9 +316,14 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         var conversationTurnCount = 0;
         string? conversationContextTextForLog = null;
 
+        CancellationTokenSource? thinkingChimeCts = null;
         try
         {
             await _tts.StopAsync().ConfigureAwait(false);
+
+            // Play listening earcon immediately so user knows the hotkey was recognized.
+            // Fire-and-forget; the earcon plays on a background thread.
+            _earcons.PlayListeningChime();
 
             // Capture immediately so the screenshot matches what the user is asking about.
             captureSw = InteractionLogger.StartTimer();
@@ -340,6 +346,22 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
             Log.Info($"Question: {question}");
             Log.Debug($"Asking about captured window: {snap.WindowTitle}");
+
+            // Start a delayed "thinking" earcon. If the model responds very quickly,
+            // the cancellation below prevents the chime from playing.
+            thinkingChimeCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(Math.Max(0, _settings.Audio.Earcons.ThinkingDelayMs), thinkingChimeCts.Token).ConfigureAwait(false);
+                    _earcons.PlayThinkingChime();
+                }
+                catch
+                {
+                    // ignore
+                }
+            });
 
             // Build conversation context
             var imageDataUrl = _foundryClient.PrepareScreenshotDataUrl(snap.Screenshot, _settings.ScreenCapture.DownscaleWidth);
@@ -376,6 +398,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                 .ConfigureAwait(false);
             modelSw.Stop();
 
+            try { thinkingChimeCts.Cancel(); } catch { /* ignore */ }
+
             DebugPrintFoundryResponse(response);
 
             spokenText = BuildSpeakText(response);
@@ -408,6 +432,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         finally
         {
             totalSw.Stop();
+
+            if (thinkingChimeCts is not null)
+            {
+                try { thinkingChimeCts.Cancel(); } catch { /* ignore */ }
+                thinkingChimeCts.Dispose();
+            }
 
             try
             {
@@ -565,6 +595,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                 // ignore (shutdown race)
             }
 
+            _earcons.PlayCancelChime();
+
             try
             {
                 _interactionLogger.Append(new InteractionLogEntry
@@ -717,7 +749,6 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         _hotkeys.Unregister(_resetConversationHotkeyId);
 
         _hotkeys.Dispose();
-        _keyboardHook.Dispose();
 
         lock (_sync)
         {

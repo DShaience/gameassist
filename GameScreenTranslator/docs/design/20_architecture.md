@@ -58,13 +58,13 @@ First-run bootstrap:
 
 ### Audio (`Core/Audio`)
 - `AzureSpeechTtsService`: speak text
-- `AzureSpeechSttService`: STT continuous (hold-to-talk) and recognize-once-with-silence (tap-to-talk)
+- `AzureSpeechSttService`: STT recognize-once-with-end-silence (tap-to-talk)
+- `EarconPlayer`: short non-speech cues (e.g., "thinking" chime)
 - `FallbackSpeech`: resolves configured fallback strings and capture-failed messages
 
 ### Runtime / interaction loop (`Core/App`)
 - `HotkeyAppRunner`
   - Registers global hotkeys (translate/cycle, stop, tap-to-talk)
-  - Uses a low-level keyboard hook for hold-to-talk (key down/up detection)
   - Manages cancellation and “interrupt speaking”
   - Produces `InteractionLogEntry` records per interaction
 

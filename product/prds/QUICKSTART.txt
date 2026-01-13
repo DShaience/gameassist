@@ -1,0 +1,71 @@
+=== Game Screen Translator - Quick Start ===
+
+WHAT IS THIS?
+  A tool that helps kids understand game text by translating and
+  explaining what's on screen. Press a hotkey, ask a question,
+  and hear the answer spoken aloud.
+
+---
+
+1. EXTRACT this entire folder somewhere (e.g., Desktop)
+   - Keep all files together!
+   - Don't move or delete any files
+
+2. RUN GameScreenTranslator.exe
+   - A system tray icon appears (bottom-right, near the clock)
+   - If Windows SmartScreen warns you, click "More info" then "Run anyway"
+   - The app runs in the background - no window will open
+
+3. START YOUR GAME in windowed or borderless-windowed mode
+   - Fullscreen exclusive mode may not capture correctly
+   - Most games have this option in Settings > Video/Display
+
+4. USE THESE HOTKEYS:
+
+   Ctrl+Alt+W  =  ASK A QUESTION
+                  You'll hear a beep, then speak your question
+                  (e.g., "What do I do now?" or "What does this button do?")
+                  Wait for the answer to be spoken
+
+   Ctrl+Alt+T  =  TRANSLATE SCREEN
+                  Captures and translates what's visible on screen
+                  Good for menus, item descriptions, quest text
+
+   Ctrl+Alt+X  =  STOP SPEAKING
+                  Immediately stops any audio that's playing
+
+   Ctrl+Alt+R  =  RESET CONVERSATION
+                  Clears conversation history
+                  Use when switching games or starting fresh
+
+5. TROUBLESHOOTING
+
+   No sound?
+   - Check that Windows volume is not muted
+   - Check that the correct audio output device is selected
+
+   Black screen capture / "couldn't see the game"?
+   - Switch game from fullscreen to windowed mode
+   - Click inside the game window to make sure it's focused
+
+   Long wait / "taking too long"?
+   - This uses cloud AI, so a good internet connection helps
+   - If it times out, just try again
+
+   Error about API key or endpoint?
+   - This is a friends-only build with pre-configured keys
+   - Contact the person who shared this with you
+
+6. FEEDBACK
+
+   Tell us what worked and what didn't!
+   - Which game did you test?
+   - Did the answers make sense?
+   - Was the audio clear?
+   - Any bugs or weird behavior?
+
+---
+
+=== Enjoy! ===
+
+Note: This is a friends-only demo build. Please don't share publicly.

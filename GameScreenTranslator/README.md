@@ -105,9 +105,12 @@ Default behavior:
 
 Hotkeys:
 - `Ctrl+Alt+T` = Translate/Cycle (capture active window → Foundry → TTS)
-- `Ctrl+Alt+Q` (hold) = Ask Question (STT while held → capture → Foundry answer → TTS)
 - `Ctrl+Alt+W` = Tap-to-talk test (STT auto-stops after ~1.5s silence → Foundry answer → TTS)
 - `Ctrl+Alt+X` = Stop speaking / cancel
+- `Ctrl+Alt+R` = Reset conversation
+
+Notes:
+- The app may play a short, soft "thinking" chime after speech recognition ends (configurable via `Audio.Earcons` in `appsettings.json`).
 
 ```cmd
 dotnet run --project GameScreenTranslator/GameScreenTranslator.csproj --
@@ -126,10 +129,9 @@ This is almost always a **bad Endpoint** (still a placeholder or typo).
 ## Hotkeys (Default)
 
 - **Translate/Cycle**: `Ctrl + Alt + T` - Captures screen and speaks translation
-- **Ask Question**: `Ctrl + Alt + Q` (hold) - Record and ask a question about what's on screen
 - **Tap-to-talk test**: `Ctrl + Alt + W` - Ask a question without holding (auto-stops after ~1.5s silence)
-- **Toggle Mode**: `Ctrl + Alt + S` - Switch between translation modes
 - **Stop Speaking**: `Ctrl + Alt + X` - Interrupt current audio
+- **Reset Conversation**: `Ctrl + Alt + R` - Clears conversation memory
 
 ## Publish a portable single EXE (recommended)
 

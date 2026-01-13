@@ -149,6 +149,8 @@ Command-line behavior is identical (`GameScreenTranslator.exe`, `--capture-once`
 
 ## 6) Split `AzureFoundryClient` responsibilities (API vs prompts vs parsing)
 
+**Status:** Done – extracted `FoundryRequestBuilder` and `FoundryResponseParser`
+
 **Problem:** `AzureFoundryClient` handles HTTP, retries, compatibility fallbacks, screenshot processing, prompt selection/rendering, response parsing, response normalization, and also conversation summarization prompting.
 
 **Suggestion:**
@@ -158,6 +160,27 @@ Command-line behavior is identical (`GameScreenTranslator.exe`, `--capture-once`
   - `FoundryResponseParser` (deserialize + normalize)
   - `ConversationSummarizer` (text-only summarization strategy)
 - Outcome: smaller classes, fewer reasons to change, easier unit testing.
+
+**What was done:**
+- Extracted `FoundryResponseParser.cs`:
+  - `NormalizeOutput(TranslateCycleResponse)` – normalizes all response fields
+  - `CleanSimple(string?)` – basic cleanup (strip wrapping, trim)
+  - `CleanUiText(string?)` – handles JSON-like key/value fragments
+  - `TryExtractKeyValue(string, out key, out val)` – heuristic for model quirks
+  - `StripWrapping(string)` – removes backticks and quotes
+- Extracted `FoundryRequestBuilder.cs`:
+  - `GetSystemPrompt()` – returns system prompt from PromptPack
+  - `BuildUserPromptText(...)` – renders user prompt templates
+  - `PrepareScreenshotDataUrl(...)` – downscales + base64 encodes images
+  - `BuildRequestMessages(...)` – converts ChatMessageDto to internal format
+  - `BuildTranslateMessages(...)` – builds messages for translate/cycle
+  - `BuildSummaryMessages(...)` – builds messages for conversation summarization
+  - `FoundryMessage` / `FoundryMessagePart` – intermediate DTOs
+- Refactored `AzureFoundryClient`:
+  - Uses `FoundryRequestBuilder` for all prompt/message construction
+  - Uses `FoundryResponseParser.NormalizeOutput()` for response normalization
+  - HTTP logic, retries, and compatibility fixes remain in client (could extract later if needed)
+  - Reduced from ~400 lines to ~300 lines; responsibilities are now clearer
 
 ---
 

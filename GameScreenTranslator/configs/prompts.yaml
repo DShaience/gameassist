@@ -44,7 +44,7 @@ foundry:
     - If the UI shows label+value, return it as a normal phrase, e.g. "Game Title: Super Adventure".
     - No markdown. No extra keys.
 
-  # The "user" message template used when an explicit question is supplied (hold-to-talk / tap-to-talk).
+  # The "user" message template used when an explicit question is supplied.
   # Placeholders:
   # - {windowTitle}, {priority}, {targetLanguage}, {mode}, {userQuestion}
   question_user: |

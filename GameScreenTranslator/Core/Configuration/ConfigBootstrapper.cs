@@ -24,6 +24,11 @@ public static class ConfigBootstrapper
         EnsureFromEmbeddedTemplate(
             templateResourceName: "prompts.template.yaml",
             targetPath: Path.Combine(baseDirectory, "configs", "prompts.yaml"));
+
+        // Extract earcon sound assets (MP3/WAV files)
+        EnsureAssetFromEmbeddedResource(
+            resourceName: "Sounds\\tap-notification-357575.mp3",
+            targetPath: Path.Combine(baseDirectory, "Assets", "Sounds", "tap-notification-357575.mp3"));
     }
 
     private static void EnsureFromEmbeddedTemplate(string templateResourceName, string targetPath)
@@ -35,6 +40,27 @@ public static class ConfigBootstrapper
 
         var content = ReadEmbeddedResourceAsString(templateResourceName);
         File.WriteAllText(targetPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+    }
+
+    private static void EnsureAssetFromEmbeddedResource(string resourceName, string targetPath)
+    {
+        if (File.Exists(targetPath))
+            return;
+
+        var asm = Assembly.GetExecutingAssembly();
+
+        using var stream = asm.GetManifestResourceStream(resourceName);
+        if (stream is null)
+        {
+            // Asset not found in embedded resources; this is non-fatal for earcons
+            // (the EarconPlayer will log a warning if the file is missing at runtime)
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+
+        using var fileStream = File.Create(targetPath);
+        stream.CopyTo(fileStream);
     }
 
     private static string ReadEmbeddedResourceAsString(string templateResourceName)

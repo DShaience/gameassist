@@ -14,7 +14,7 @@ Many children (ages 5–10) play games that do not offer translations (e.g., Heb
 - Capture the active window only, including window title and process info.
 - Vision-capable model call with structured JSON output.
 - Spoken output via Azure Speech TTS.
-- STT for spoken questions (hold-to-talk + tap-to-talk test).
+- STT for spoken questions (tap-to-talk).
 - Priority cycling on repeated presses for the same “screen”.
 - Local structured logs (JSONL) with privacy controls.
 
@@ -28,9 +28,9 @@ Many children (ages 5–10) play games that do not offer translations (e.g., Heb
 ## Key user experience
 ### Primary hotkeys (implemented in `Core/App/HotkeyAppRunner.cs`)
 - `Ctrl+Alt+T`: Translate/Cycle (capture → model → speak)
-- `Ctrl+Alt+Q` (hold): Hold-to-talk question (capture at key-down → record STT while held → answer → speak)
 - `Ctrl+Alt+W`: Tap-to-talk test (capture → record STT until silence → answer → speak)
 - `Ctrl+Alt+X`: Stop speaking / cancel current operation
+- `Ctrl+Alt+R`: Reset conversation
 
 ### Modes (configured via `appsettings.json`)
 - `Translation.Mode`: `realistic` | `simplified` | `explain` (default is `explain`)
