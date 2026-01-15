@@ -102,10 +102,12 @@ public sealed class Win32HotkeyManager : IDisposable
 /// <summary>
 /// Win32 MOD_* flags for RegisterHotKey.
 /// </summary>
-public static class HotkeyModifiers
+[Flags]
+public enum HotkeyModifiers : uint
 {
-    public const uint Alt = 0x0001; // MOD_ALT
-    public const uint Control = 0x0002; // MOD_CONTROL
-    public const uint Shift = 0x0004; // MOD_SHIFT
-    public const uint Win = 0x0008; // MOD_WIN
+    None = 0,
+    Alt = 0x0001,      // MOD_ALT
+    Control = 0x0002,  // MOD_CONTROL
+    Shift = 0x0004,    // MOD_SHIFT
+    Windows = 0x0008   // MOD_WIN
 }

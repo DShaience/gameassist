@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace GameScreenTranslator.Core.Logging;
 
@@ -69,7 +70,31 @@ public sealed class ConsoleLogger : ILogger
             _ => ""
         };
 
-        Console.WriteLine(prefix + message);
+        // Apply RTL mark if message contains Hebrew characters
+        var adjustedMessage = AdjustForRtl(message);
+        Console.WriteLine(prefix + adjustedMessage);
+    }
+
+    /// <summary>
+    /// Prepends a Unicode Right-to-Left Mark if the text contains Hebrew characters.
+    /// This improves display in terminals that support bidirectional text.
+    /// </summary>
+    private static string AdjustForRtl(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        // Hebrew Unicode range: U+0590 to U+05FF
+        // Check if any character is in the Hebrew block
+        bool hasHebrew = text.Any(c => c >= '\u0590' && c <= '\u05FF');
+        
+        if (hasHebrew)
+        {
+            // Prepend Right-to-Left Mark (RLM, U+200F) to hint RTL rendering
+            return "\u200F" + text;
+        }
+
+        return text;
     }
 }
 

@@ -37,9 +37,15 @@ Key sections (P0):
 - `Translation`
   - `TargetLanguage` (e.g., `"Hebrew"`, `"Russian"`)
   - `Mode` (`realistic|simplified|explain`)
-- `Hotkeys`
-  - `Translate`, `AskQuestion`, `ToggleMode`, `StopSpeaking`
-  - Note: not all keys are currently wired in hotkey runtime (see `40_hotkeys_and_interaction.md`)
+- `Hotkeys` (fully configurable as of 2026-01-15)
+  - `Translate` (default: `Ctrl+Alt+T`) - Translate what's on screen
+  - `Ask` (default: `Ctrl+Alt+W`) - Tap-to-talk question mode
+  - `Stop` (default: `Ctrl+Alt+X`) - Stop speaking / cancel operation
+  - `ResetConversation` (default: `Ctrl+Alt+R`) - Clear conversation history
+  - Format: `"Modifier1+Modifier2+Key"` (e.g., `"Ctrl+Shift+Q"`)
+  - Supported modifiers: `Ctrl`, `Alt`, `Shift`, `Win`
+  - Invalid hotkeys cause startup failure with clear error message
+  - See `HotkeyDefinitions.cs` for centralized defaults and descriptions
 - `Audio`
   - Ducking settings (P0 mostly not implemented end-to-end)
   - `Earcons` (audio cues for state changes)

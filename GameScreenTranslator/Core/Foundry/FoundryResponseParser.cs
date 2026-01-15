@@ -20,6 +20,7 @@ public static class FoundryResponseParser
         output.SourceText = CleanUiText(output.SourceText);
         output.TranslatedText = CleanUiText(output.TranslatedText);
         output.Explanation = output.Explanation is null ? null : CleanSimple(output.Explanation);
+        output.Answer = output.Answer is null ? null : CleanSimple(output.Answer);
     }
 
     /// <summary>

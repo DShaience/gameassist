@@ -69,3 +69,5 @@ WHAT IS THIS?
 === Enjoy! ===
 
 Note: This is a friends-only demo build. Please don't share publicly.
+
+# cd GameScreenTranslator && dotnet run --no-build 2>&1

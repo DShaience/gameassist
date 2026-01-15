@@ -8,6 +8,7 @@ public sealed class AppSettings
     public TranslationSettings Translation { get; set; } = new();
     public ScreenCaptureSettings ScreenCapture { get; set; } = new();
     public AudioSettings Audio { get; set; } = new();
+    public HotkeysSettings Hotkeys { get; set; } = new();
     public LoggingSettings Logging { get; set; } = new();
     public InteractionLoggingSettings InteractionLogging { get; set; } = new();
     public ConversationSettings Conversation { get; set; } = new();
@@ -179,7 +180,7 @@ public sealed class AppSettings
         /// </summary>
         public ConversationLoggingSettings Logging { get; set; } = new();
 
-        public sealed class ConversationLoggingSettings
+    public sealed class ConversationLoggingSettings
         {
             /// <summary>
             /// If true and log level is Debug, include conversation context text in JSONL output.
@@ -187,5 +188,36 @@ public sealed class AppSettings
             /// </summary>
             public bool IncludeContextInDebug { get; set; } = false;
         }
+    }
+
+    /// <summary>
+    /// Hotkey configuration. All values are strings like "Ctrl+Alt+T".
+    /// If not specified, falls back to defaults defined in HotkeyDefinitions.
+    /// </summary>
+    public sealed class HotkeysSettings
+    {
+        /// <summary>
+        /// Translate/Cycle hotkey. Captures screenshot and translates visible text.
+        /// Default: Ctrl+Alt+T
+        /// </summary>
+        public string Translate { get; set; } = HotkeyDefinitions.Translate.DefaultShortcut;
+
+        /// <summary>
+        /// Ask hotkey (tap-to-talk). Captures screenshot, records voice question, answers via TTS.
+        /// Default: Ctrl+Alt+W
+        /// </summary>
+        public string Ask { get; set; } = HotkeyDefinitions.Ask.DefaultShortcut;
+
+        /// <summary>
+        /// Stop hotkey. Cancels current operation and stops TTS playback.
+        /// Default: Ctrl+Alt+X
+        /// </summary>
+        public string Stop { get; set; } = HotkeyDefinitions.Stop.DefaultShortcut;
+
+        /// <summary>
+        /// Reset conversation hotkey. Clears conversation history and rolling summary.
+        /// Default: Ctrl+Alt+R
+        /// </summary>
+        public string ResetConversation { get; set; } = HotkeyDefinitions.ResetConversation.DefaultShortcut;
     }
 }

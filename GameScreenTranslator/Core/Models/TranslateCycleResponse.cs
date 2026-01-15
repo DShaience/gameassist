@@ -13,6 +13,12 @@ public sealed class TranslateCycleResponse
     public string TranslatedText { get; set; } = "";
     public string? Explanation { get; set; }
 
+    /// <summary>
+    /// The answer to the user's question (used in Q&A mode).
+    /// When present, this is what should be spoken by TTS.
+    /// </summary>
+    public string? Answer { get; set; }
+
     public sealed class BoundingBoxRect
     {
         public int X { get; set; }

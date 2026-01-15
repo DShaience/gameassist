@@ -84,19 +84,22 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
     public void Start()
     {
-        // Register non-hold hotkeys:
-        // Ctrl+Alt+T => translate/cycle
-        // Ctrl+Alt+X => stop speaking / cancel
-        _translateHotkeyId = _hotkeys.Register(HotkeyModifiers.Control | HotkeyModifiers.Alt, (uint)VirtualKey.T);
-        _stopHotkeyId = _hotkeys.Register(HotkeyModifiers.Control | HotkeyModifiers.Alt, (uint)VirtualKey.X);
+        // Register hotkeys from configuration (or use defaults from HotkeyDefinitions)
+        _translateHotkeyId = RegisterHotkeyFromConfig(
+            _settings.Hotkeys.Translate,
+            HotkeyDefinitions.Translate);
 
-        // Tap-to-talk (auto end-of-speech) test mode:
-        // Ctrl+Alt+W => start STT recognize-once with end silence timeout, then ask Foundry and speak
-        _tapQuestionHotkeyId = _hotkeys.Register(HotkeyModifiers.Control | HotkeyModifiers.Alt, (uint)VirtualKey.W);
+        _stopHotkeyId = RegisterHotkeyFromConfig(
+            _settings.Hotkeys.Stop,
+            HotkeyDefinitions.Stop);
 
-        // Reset conversation history:
-        // Ctrl+Alt+R => clear conversation context
-        _resetConversationHotkeyId = _hotkeys.Register(HotkeyModifiers.Control | HotkeyModifiers.Alt, (uint)VirtualKey.R);
+        _tapQuestionHotkeyId = RegisterHotkeyFromConfig(
+            _settings.Hotkeys.Ask,
+            HotkeyDefinitions.Ask);
+
+        _resetConversationHotkeyId = RegisterHotkeyFromConfig(
+            _settings.Hotkeys.ResetConversation,
+            HotkeyDefinitions.ResetConversation);
 
         _hotkeys.HotkeyPressed += (_, id) =>
         {
@@ -131,6 +134,48 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             }
         };
 
+        // Log registered hotkeys
+        Log.Info($"Hotkeys registered: " +
+            $"{HotkeyDefinitions.FormatForLog(HotkeyDefinitions.Translate, _settings.Hotkeys.Translate)}, " +
+            $"{HotkeyDefinitions.FormatForLog(HotkeyDefinitions.Ask, _settings.Hotkeys.Ask)}, " +
+            $"{HotkeyDefinitions.FormatForLog(HotkeyDefinitions.Stop, _settings.Hotkeys.Stop)}, " +
+            $"{HotkeyDefinitions.FormatForLog(HotkeyDefinitions.ResetConversation, _settings.Hotkeys.ResetConversation)}");
+    }
+
+    private int RegisterHotkeyFromConfig(string configValue, HotkeyDef definition)
+    {
+        var shortcutStr = string.IsNullOrWhiteSpace(configValue) ? definition.DefaultShortcut : configValue;
+
+        try
+        {
+            var parsed = HotkeyConfig.Parse(shortcutStr);
+            var modifiers = ConvertModifiers(parsed.Modifiers);
+            var id = _hotkeys.Register((uint)modifiers, (uint)parsed.Key);
+
+            if (id == 0)
+            {
+                Log.Warn($"Failed to register hotkey {definition.Name} ({shortcutStr}). " +
+                    "The key combination may be in use by another application.");
+            }
+
+            return id;
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidOperationException(
+                $"Invalid hotkey configuration for '{definition.Name}': '{shortcutStr}'. " +
+                $"Expected format like 'Ctrl+Alt+T'. Error: {ex.Message}", ex);
+        }
+    }
+
+    private static uint ConvertModifiers(ModifierKeys keys)
+    {
+        uint result = 0;
+        if ((keys & ModifierKeys.Control) != 0) result |= (uint)HotkeyModifiers.Control;
+        if ((keys & ModifierKeys.Alt) != 0) result |= (uint)HotkeyModifiers.Alt;
+        if ((keys & ModifierKeys.Shift) != 0) result |= (uint)HotkeyModifiers.Shift;
+        if ((keys & ModifierKeys.Windows) != 0) result |= (uint)HotkeyModifiers.Windows;
+        return result;
     }
 
     public void Run(CancellationToken cancellationToken)
@@ -662,6 +707,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         if (response is null)
             return "";
 
+        // Q&A mode: If "answer" field is present, use that directly
+        var answer = (response.Answer ?? "").Trim();
+        if (answer.Length > 0)
+            return answer;
+
+        // Translation mode: use translatedText + explanation
         var translated = (response.TranslatedText ?? "").Trim();
         var explanation = (response.Explanation ?? "").Trim();
         var source = (response.SourceText ?? "").Trim();
@@ -689,7 +740,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             return;
 
         Log.Debug($"[Foundry Parsed] SelectedLabel={response.SelectedLabel}, SourceText={response.SourceText}, TranslatedText={response.TranslatedText}" +
-            (string.IsNullOrWhiteSpace(response.Explanation) ? "" : $", Explanation={response.Explanation}"));
+            (string.IsNullOrWhiteSpace(response.Explanation) ? "" : $", Explanation={response.Explanation}") +
+            (string.IsNullOrWhiteSpace(response.Answer) ? "" : $", Answer={response.Answer}"));
     }
 
     private static void DebugPrintCapture(string prefix, WindowCaptureResult capture)

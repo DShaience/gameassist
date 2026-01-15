@@ -65,3 +65,19 @@ Template:
   - Rotate keys monthly
   - Explicitly label as "friends-only, don't share publicly"
 - **Follow-ups:** See `product/backlog/future-secure-azure-architecture.md` for production-ready solution.
+
+## 2026-01-15 — Configurable hotkeys via appsettings.json
+- **Decision:** Make all hotkeys user-configurable via `appsettings.json` with fallback to hardcoded defaults.
+- **Context:** PM requested ability to customize hotkeys without recompiling.
+- **Options:**
+  1) Keep hardcoded hotkeys (simplest)
+  2) Config-driven hotkeys with fallback to defaults (flexible, backward compatible)
+  3) Full hotkey remapping UI (overkill for current scope)
+- **Why:** Option 2 balances flexibility with simplicity. Users can customize if needed, but existing configs continue to work unchanged.
+- **Implementation:**
+  - `HotkeyDefinitions.cs`: centralized definitions (name, default shortcut, description)
+  - `HotkeysSettings` in `AppSettings.cs`: config binding
+  - `HotkeyConfig.Parse()`: parses strings like "Ctrl+Alt+T" into modifiers + key
+  - `HotkeyAppRunner.RegisterHotkeyFromConfig()`: reads from config, falls back to defaults
+  - Invalid hotkey strings fail startup with clear error message
+- **Follow-ups:** None required.
