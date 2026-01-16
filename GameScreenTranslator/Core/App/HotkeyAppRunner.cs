@@ -7,6 +7,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
 using System.Threading;
 using System.Threading.Tasks;
+using GameScreenTranslator.Core.Abstractions;
 using GameScreenTranslator.Core.Audio;
 using GameScreenTranslator.Core.Capture;
 using GameScreenTranslator.Core.Configuration;
@@ -28,7 +29,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     private readonly ScreenStateManager _state = new();
 
     private readonly AzureFoundryClient _foundryClient;
-    private readonly AzureSpeechTtsService _tts;
+    private readonly ITtsService _tts;
     private readonly AzureSpeechSttService _stt;
     private readonly EarconPlayer _earcons;
 
@@ -59,7 +60,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         _interactionLogger = new InteractionLogger(_settings, baseDirectory);
 
         _foundryClient = new AzureFoundryClient(_settings.Providers.AzureFoundry, _prompts);
-        _tts = new AzureSpeechTtsService(_speechConfig);
+        _tts = CreateTtsService(_speechConfig);
         _stt = new AzureSpeechSttService(_speechConfig);
         _earcons = new EarconPlayer(_settings.Audio.Earcons, baseDirectory);
 
@@ -78,6 +79,18 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         };
 
         _conversationContextBuilder = new ConversationContextBuilder(conversationConfig, summarizer);
+    }
+
+    private static ITtsService CreateTtsService(SpeechLanguageConfig config)
+    {
+        if (config.OpenAiTts.Enabled)
+        {
+            Log.Info("Using Azure OpenAI TTS-HD service");
+            return new AzureOpenAiTtsService(config.OpenAiTts);
+        }
+
+        Log.Info("Using Azure Cognitive Services TTS");
+        return new AzureSpeechTtsService(config);
     }
 
     public void Start()
@@ -802,7 +815,9 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
         CancelCurrentOperation();
 
-        await _tts.DisposeAsync().ConfigureAwait(false);
+        if (_tts is IAsyncDisposable ttsDisposable)
+            await ttsDisposable.DisposeAsync().ConfigureAwait(false);
+        
         await _stt.DisposeAsync().ConfigureAwait(false);
     }
 }
