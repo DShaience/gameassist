@@ -86,3 +86,4 @@ $RECYCLE.BIN/
 
 GameScreenTranslator/configs/samples*
 dist/
+GameScreenTranslator/audio_config.json
