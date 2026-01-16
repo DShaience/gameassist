@@ -64,8 +64,11 @@ public sealed class FoundryTranslateOnceCommand : ICliCommand
             if (!string.IsNullOrWhiteSpace(response.Explanation))
                 toSpeak = $"{toSpeak}. {response.Explanation}";
 
-            await using var tts = new AzureSpeechTtsService(ctx.SpeechConfig);
+            var tts = TtsServiceFactory.Create(ctx.AudioConfig.Tts);
             await tts.SpeakAsync(toSpeak, ctx.Settings.Translation.TargetLanguage);
+
+            if (tts is IAsyncDisposable disposable)
+                await disposable.DisposeAsync();
         }
         finally
         {

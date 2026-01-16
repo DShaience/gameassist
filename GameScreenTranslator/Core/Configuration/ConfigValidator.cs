@@ -36,20 +36,20 @@ public sealed class ConfigValidationException : Exception
 public static class ConfigValidator
 {
     /// <summary>
-    /// Validates AppSettings, PromptPack, and SpeechLanguageConfig.
+    /// Validates AppSettings, PromptPack, and AudioConfig.
     /// Throws <see cref="ConfigValidationException"/> if any required fields are missing.
     /// </summary>
     public static void Validate(
         string baseDir,
         AppSettings settings,
         PromptPack prompts,
-        SpeechLanguageConfig speechConfig)
+        AudioConfig audioConfig)
     {
         var errors = new List<string>();
 
         ValidateAppSettings(settings, errors);
         ValidatePrompts(prompts, errors);
-        ValidateSpeechConfig(baseDir, settings, speechConfig, errors);
+        ValidateAudioConfig(baseDir, audioConfig, errors);
 
         if (errors.Count > 0)
             throw new ConfigValidationException(errors);
@@ -113,50 +113,82 @@ public static class ConfigValidator
         }
     }
 
-    private static void ValidateSpeechConfig(
+    private static void ValidateAudioConfig(
         string baseDir,
-        AppSettings settings,
-        SpeechLanguageConfig speechConfig,
+        AudioConfig audioConfig,
         List<string> errors)
     {
-        var configPath = settings.Providers.AzureSpeech.ConfigPath;
-
-        // Check if speech config file actually exists
-        if (string.IsNullOrWhiteSpace(configPath))
-        {
-            errors.Add(
-                "Providers.AzureSpeech.ConfigPath is empty in appsettings.json. " +
-                "Please set the path to your speech_language_config.json file.");
-            return;
-        }
-
-        var fullPath = Path.IsPathRooted(configPath)
-            ? configPath
-            : Path.Combine(baseDir, configPath);
+        const string configFileName = "audio_config.json";
+        var fullPath = Path.Combine(baseDir, configFileName);
 
         if (!File.Exists(fullPath))
         {
             errors.Add(
-                $"Speech config file not found at '{fullPath}'. " +
-                "Run the app once to create a template, then fill in your Azure Speech credentials.");
+                $"Audio config file not found at '{fullPath}'. " +
+                "Copy audio_config.template.json to audio_config.json and fill in your API keys.");
             return;
         }
 
-        // Azure Speech credentials
-        if (string.IsNullOrWhiteSpace(speechConfig.AzureSpeech.ApiKey))
+        // Validate TTS config based on selected provider
+        var ttsProvider = audioConfig.Tts.Provider?.Trim() ?? "AzureCognitive";
+
+        if (ttsProvider.Equals("AzureCognitive", StringComparison.OrdinalIgnoreCase))
         {
-            errors.Add(
-                $"AzureSpeech.ApiKey is empty in '{configPath}'. " +
-                "Please add your Azure Speech API key.");
+            var ttsCfg = audioConfig.Tts.AzureCognitive;
+
+            if (string.IsNullOrWhiteSpace(ttsCfg.ApiKey))
+            {
+                errors.Add(
+                    $"Tts.AzureCognitive.ApiKey is empty in '{configFileName}'. " +
+                    "Please add your Azure Cognitive Services Speech API key.");
+            }
+
+            if (string.IsNullOrWhiteSpace(ttsCfg.Endpoint) && string.IsNullOrWhiteSpace(ttsCfg.Region))
+            {
+                errors.Add(
+                    $"Tts.AzureCognitive requires either Endpoint or Region in '{configFileName}'. " +
+                    "Please add your Azure Speech endpoint URL or region code (e.g., 'swedencentral').");
+            }
+        }
+        else if (ttsProvider.Equals("AzureOpenAi", StringComparison.OrdinalIgnoreCase))
+        {
+            var ttsCfg = audioConfig.Tts.AzureOpenAi;
+
+            if (string.IsNullOrWhiteSpace(ttsCfg.Endpoint))
+            {
+                errors.Add(
+                    $"Tts.AzureOpenAi.Endpoint is empty in '{configFileName}'. " +
+                    "Please add your Azure OpenAI endpoint URL.");
+            }
+
+            if (string.IsNullOrWhiteSpace(ttsCfg.ApiKey))
+            {
+                errors.Add(
+                    $"Tts.AzureOpenAi.ApiKey is empty in '{configFileName}'. " +
+                    "Please add your Azure OpenAI API key.");
+            }
         }
 
-        // Must have either Endpoint or Region
-        if (string.IsNullOrWhiteSpace(speechConfig.AzureSpeech.Endpoint) &&
-            string.IsNullOrWhiteSpace(speechConfig.AzureSpeech.Region))
+        // Validate STT config based on selected provider
+        var sttProvider = audioConfig.Stt.Provider?.Trim() ?? "AzureCognitive";
+
+        if (sttProvider.Equals("AzureCognitive", StringComparison.OrdinalIgnoreCase))
         {
-            errors.Add(
-                $"AzureSpeech requires either Endpoint or Region in '{configPath}'. " +
-                "Please add your Azure Speech endpoint URL or region code (e.g., 'westeurope').");
+            var sttCfg = audioConfig.Stt.AzureCognitive;
+
+            if (string.IsNullOrWhiteSpace(sttCfg.ApiKey))
+            {
+                errors.Add(
+                    $"Stt.AzureCognitive.ApiKey is empty in '{configFileName}'. " +
+                    "Please add your Azure Cognitive Services Speech API key.");
+            }
+
+            if (string.IsNullOrWhiteSpace(sttCfg.Endpoint) && string.IsNullOrWhiteSpace(sttCfg.Region))
+            {
+                errors.Add(
+                    $"Stt.AzureCognitive requires either Endpoint or Region in '{configFileName}'. " +
+                    "Please add your Azure Speech endpoint URL or region code (e.g., 'swedencentral').");
+            }
         }
     }
 }

@@ -19,14 +19,14 @@ namespace GameScreenTranslator.Core.Audio;
 /// </summary>
 public sealed class AzureOpenAiTtsService : ITtsService, IAsyncDisposable
 {
-    private readonly OpenAiTtsConfig _config;
+    private readonly AzureOpenAiTtsConfig _config;
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _gate = new(1, 1);
     
     private WaveOutEvent? _waveOut;
     private CancellationTokenSource? _playbackCts;
 
-    public AzureOpenAiTtsService(OpenAiTtsConfig config)
+    public AzureOpenAiTtsService(AzureOpenAiTtsConfig config)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         

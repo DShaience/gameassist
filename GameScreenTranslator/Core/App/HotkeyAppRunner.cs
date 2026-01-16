@@ -22,7 +22,7 @@ namespace GameScreenTranslator.Core.App;
 public sealed class HotkeyAppRunner : IAsyncDisposable
 {
     private readonly AppSettings _settings;
-    private readonly SpeechLanguageConfig _speechConfig;
+    private readonly AudioConfig _audioConfig;
     private readonly PromptPack _prompts;
 
     private readonly ActiveWindowCapture _capturer = new();
@@ -30,7 +30,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
     private readonly AzureFoundryClient _foundryClient;
     private readonly ITtsService _tts;
-    private readonly AzureSpeechSttService _stt;
+    private readonly ISttService _stt;
     private readonly EarconPlayer _earcons;
 
     private readonly Win32HotkeyManager _hotkeys = new();
@@ -51,17 +51,17 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     private int _tapQuestionHotkeyId;
     private int _resetConversationHotkeyId;
 
-    public HotkeyAppRunner(AppSettings settings, SpeechLanguageConfig speechConfig, PromptPack prompts, string baseDirectory)
+    public HotkeyAppRunner(AppSettings settings, AudioConfig audioConfig, PromptPack prompts, string baseDirectory)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-        _speechConfig = speechConfig ?? throw new ArgumentNullException(nameof(speechConfig));
+        _audioConfig = audioConfig ?? throw new ArgumentNullException(nameof(audioConfig));
         _prompts = prompts ?? throw new ArgumentNullException(nameof(prompts));
 
         _interactionLogger = new InteractionLogger(_settings, baseDirectory);
 
         _foundryClient = new AzureFoundryClient(_settings.Providers.AzureFoundry, _prompts);
-        _tts = CreateTtsService(_speechConfig);
-        _stt = new AzureSpeechSttService(_speechConfig);
+        _tts = TtsServiceFactory.Create(_audioConfig.Tts);
+        _stt = SttServiceFactory.Create(_audioConfig.Stt);
         _earcons = new EarconPlayer(_settings.Audio.Earcons, baseDirectory);
 
         // Initialize conversation context builder with summarizer
@@ -79,18 +79,6 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         };
 
         _conversationContextBuilder = new ConversationContextBuilder(conversationConfig, summarizer);
-    }
-
-    private static ITtsService CreateTtsService(SpeechLanguageConfig config)
-    {
-        if (config.OpenAiTts.Enabled)
-        {
-            Log.Info("Using Azure OpenAI TTS-HD service");
-            return new AzureOpenAiTtsService(config.OpenAiTts);
-        }
-
-        Log.Info("Using Azure Cognitive Services TTS");
-        return new AzureSpeechTtsService(config);
     }
 
     public void Start()
@@ -817,7 +805,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
         if (_tts is IAsyncDisposable ttsDisposable)
             await ttsDisposable.DisposeAsync().ConfigureAwait(false);
-        
-        await _stt.DisposeAsync().ConfigureAwait(false);
+
+        if (_stt is IAsyncDisposable sttDisposable)
+            await sttDisposable.DisposeAsync().ConfigureAwait(false);
     }
 }

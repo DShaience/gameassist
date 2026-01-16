@@ -31,8 +31,8 @@
     <EmbeddedResource Include="appsettings.template.json">
       <LogicalName>appsettings.template.json</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="speech_language_config.template.json">
-      <LogicalName>speech_language_config.template.json</LogicalName>
+    <EmbeddedResource Include="audio_config.template.json">
+      <LogicalName>audio_config.template.json</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="configs\prompts.template.yaml">
       <LogicalName>prompts.template.yaml</LogicalName>

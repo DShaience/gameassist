@@ -32,14 +32,14 @@ public static class RuntimeBootstrapper
         ConfigureLogging(settings);
 
         var prompts = PromptPackLoader.Load(baseDir);
-        var speechConfig = SpeechLanguageConfigLoader.Load(baseDir, settings.Providers.AzureSpeech.ConfigPath);
+        var audioConfig = AudioConfigLoader.Load(baseDir);
 
         // Validate all configs before returning — fail fast with actionable errors.
-        ConfigValidator.Validate(baseDir, settings, prompts, speechConfig);
+        ConfigValidator.Validate(baseDir, settings, prompts, audioConfig);
 
         var logsDir = Path.Combine(baseDir, "logs");
 
-        return new RuntimeContext(baseDir, logsDir, settings, prompts, speechConfig);
+        return new RuntimeContext(baseDir, logsDir, settings, prompts, audioConfig);
     }
 
     /// <summary>
@@ -94,19 +94,19 @@ public sealed class RuntimeContext
     public string LogsDirectory { get; }
     public AppSettings Settings { get; }
     public PromptPack Prompts { get; }
-    public SpeechLanguageConfig SpeechConfig { get; }
+    public AudioConfig AudioConfig { get; }
 
     public RuntimeContext(
         string baseDirectory,
         string logsDirectory,
         AppSettings settings,
         PromptPack prompts,
-        SpeechLanguageConfig speechConfig)
+        AudioConfig audioConfig)
     {
         BaseDirectory = baseDirectory ?? throw new ArgumentNullException(nameof(baseDirectory));
         LogsDirectory = logsDirectory ?? throw new ArgumentNullException(nameof(logsDirectory));
         Settings = settings ?? throw new ArgumentNullException(nameof(settings));
         Prompts = prompts ?? throw new ArgumentNullException(nameof(prompts));
-        SpeechConfig = speechConfig ?? throw new ArgumentNullException(nameof(speechConfig));
+        AudioConfig = audioConfig ?? throw new ArgumentNullException(nameof(audioConfig));
     }
 }

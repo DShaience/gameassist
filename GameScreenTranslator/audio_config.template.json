@@ -1,0 +1,61 @@
+{
+  "Documentation": {
+    "Description": "Audio configuration for TTS and STT services",
+    "TtsProviders": "AzureCognitive, AzureOpenAi",
+    "SttProviders": "AzureCognitive",
+    "AzureCognitiveVoices": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts",
+    "AzureOpenAiVoices": "alloy, echo, fable, onyx, nova, shimmer"
+  },
+
+  "Tts": {
+    "Provider": "AzureOpenAi",
+
+    "AzureCognitive": {
+      "Endpoint": "ENDPOINT",
+      "ApiKey": "API KEY HERE",
+      "Region": "",
+      "DefaultVoiceName": "he-IL-HilaNeural",
+      "VoiceByLanguage": {
+        "he-IL": "he-IL-HilaNeural",
+        "ru-RU": "ru-RU-SvetlanaNeural",
+        "en-US": "en-US-JennyNeural",
+        "Hebrew": "he-IL-HilaNeural",
+        "Russian": "ru-RU-SvetlanaNeural",
+        "English": "en-US-JennyNeural"
+      }
+    },
+
+    "AzureOpenAi": {
+      "Endpoint": "ENDPOINT",
+      "ApiKey": "API KEY HERE",
+      "Deployment": "tts-hd",
+      "ApiVersion": "2025-03-01-preview",
+      "DefaultVoice": "alloy",
+      "VoiceByLanguage": {
+        "Hebrew": "nova",
+        "Russian": "echo",
+        "English": "alloy",
+        "he-IL": "nova",
+        "ru-RU": "echo",
+        "en-US": "alloy"
+      }
+    }
+  },
+
+  "Stt": {
+    "Provider": "AzureCognitive",
+
+    "AzureCognitive": {
+      "Endpoint": "ENDPOINT",
+      "ApiKey": "API KEY HERE",
+      "Region": "",
+      "DefaultRecognitionLanguage": "he-IL",
+      "CandidateLanguages": [
+        "he-IL",
+        "en-US",
+        "ru-RU"
+      ],
+      "EnableAutoLanguageDetection": true
+    }
+  }
+}

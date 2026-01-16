@@ -60,7 +60,7 @@ public sealed class HotkeyModeCommand : ICliCommand
             cts.Cancel();
         };
 
-        await using var runner = new HotkeyAppRunner(ctx.Settings, ctx.SpeechConfig, ctx.Prompts, ctx.BaseDirectory);
+        await using var runner = new HotkeyAppRunner(ctx.Settings, ctx.AudioConfig, ctx.Prompts, ctx.BaseDirectory);
         runner.Start();
         runner.Run(cts.Token);
 

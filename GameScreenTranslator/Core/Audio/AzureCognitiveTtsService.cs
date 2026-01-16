@@ -7,35 +7,37 @@ using Microsoft.CognitiveServices.Speech;
 
 namespace GameScreenTranslator.Core.Audio;
 
-public sealed class AzureSpeechTtsService : ITtsService, IAsyncDisposable
+/// <summary>
+/// TTS service using Azure Cognitive Services Speech SDK.
+/// </summary>
+public sealed class AzureCognitiveTtsService : ITtsService, IAsyncDisposable
 {
     private readonly SpeechSynthesizer _synthesizer;
-    private readonly SpeechLanguageConfig _config;
+    private readonly AzureCognitiveTtsConfig _config;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public AzureSpeechTtsService(SpeechLanguageConfig config)
+    public AzureCognitiveTtsService(AzureCognitiveTtsConfig config)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
 
         SpeechConfig speechConfig;
 
-        if (!string.IsNullOrWhiteSpace(_config.AzureSpeech.Endpoint))
+        if (!string.IsNullOrWhiteSpace(_config.Endpoint))
         {
-            speechConfig = SpeechConfig.FromEndpoint(new Uri(_config.AzureSpeech.Endpoint), _config.AzureSpeech.ApiKey);
+            speechConfig = SpeechConfig.FromEndpoint(new Uri(_config.Endpoint), _config.ApiKey);
 
-            if (!string.IsNullOrWhiteSpace(_config.AzureSpeech.Region))
+            if (!string.IsNullOrWhiteSpace(_config.Region))
             {
                 // Region isn't strictly required when using endpoint+key, but it can help certain auth flows.
-                speechConfig.SetProperty("SpeechServiceConnection_Region", _config.AzureSpeech.Region);
+                speechConfig.SetProperty("SpeechServiceConnection_Region", _config.Region);
             }
         }
         else
         {
             // Region-based setup (common in Azure Speech docs).
-            speechConfig = SpeechConfig.FromSubscription(_config.AzureSpeech.ApiKey, _config.AzureSpeech.Region!);
+            speechConfig = SpeechConfig.FromSubscription(_config.ApiKey, _config.Region!);
         }
 
-        // We'll set voice per-call (SpeakAsync).
         _synthesizer = new SpeechSynthesizer(speechConfig);
     }
 
@@ -66,8 +68,6 @@ public sealed class AzureSpeechTtsService : ITtsService, IAsyncDisposable
                 _synthesizer.Properties.SetProperty(PropertyId.SpeechServiceConnection_SynthVoice, voice);
             }
 
-            // Note: Speech SDK cancellation is not strongly integrated with CancellationToken.
-            // We still accept it for future extension (and for consistent API shape).
             using var result = await _synthesizer.SpeakTextAsync(text).ConfigureAwait(false);
 
             if (result.Reason == ResultReason.SynthesizingAudioCompleted)
@@ -77,10 +77,10 @@ public sealed class AzureSpeechTtsService : ITtsService, IAsyncDisposable
             {
                 var details = SpeechSynthesisCancellationDetails.FromResult(result);
                 throw new InvalidOperationException(
-                    $"Azure Speech TTS canceled. Reason={details.Reason}, ErrorCode={details.ErrorCode}, Details={details.ErrorDetails}");
+                    $"Azure Cognitive TTS canceled. Reason={details.Reason}, ErrorCode={details.ErrorCode}, Details={details.ErrorDetails}");
             }
 
-            throw new InvalidOperationException($"Azure Speech TTS failed. Reason={result.Reason}");
+            throw new InvalidOperationException($"Azure Cognitive TTS failed. Reason={result.Reason}");
         }
         finally
         {
@@ -90,35 +90,28 @@ public sealed class AzureSpeechTtsService : ITtsService, IAsyncDisposable
 
     private string ResolveVoice(string? languageOrLocale)
     {
-        // Prefer an explicit locale if provided and mapped.
         if (!string.IsNullOrWhiteSpace(languageOrLocale))
         {
-            // If caller passed "Hebrew"/"Russian", try mapping by common cases.
             var normalized = languageOrLocale.Trim();
 
-            if (_config.TextToSpeech.VoiceByLanguage.TryGetValue(normalized, out var exact))
+            if (_config.VoiceByLanguage.TryGetValue(normalized, out var exact))
                 return exact;
 
-            if (normalized.Equals("Hebrew", StringComparison.OrdinalIgnoreCase))
-            {
-                if (_config.TextToSpeech.VoiceByLanguage.TryGetValue("he-IL", out var he))
-                    return he;
-            }
+            // Common language name mappings
+            if (normalized.Equals("Hebrew", StringComparison.OrdinalIgnoreCase) &&
+                _config.VoiceByLanguage.TryGetValue("he-IL", out var he))
+                return he;
 
-            if (normalized.Equals("Russian", StringComparison.OrdinalIgnoreCase))
-            {
-                if (_config.TextToSpeech.VoiceByLanguage.TryGetValue("ru-RU", out var ru))
-                    return ru;
-            }
+            if (normalized.Equals("Russian", StringComparison.OrdinalIgnoreCase) &&
+                _config.VoiceByLanguage.TryGetValue("ru-RU", out var ru))
+                return ru;
 
-            if (normalized.Equals("English", StringComparison.OrdinalIgnoreCase))
-            {
-                if (_config.TextToSpeech.VoiceByLanguage.TryGetValue("en-US", out var en))
-                    return en;
-            }
+            if (normalized.Equals("English", StringComparison.OrdinalIgnoreCase) &&
+                _config.VoiceByLanguage.TryGetValue("en-US", out var en))
+                return en;
         }
 
-        return _config.TextToSpeech.DefaultVoiceName;
+        return _config.DefaultVoiceName;
     }
 
     public ValueTask DisposeAsync()
