@@ -72,6 +72,19 @@ public sealed class AzureOpenAiTtsConfig
     public string Deployment { get; set; } = "tts-hd";
     public string ApiVersion { get; set; } = "2025-03-01-preview";
     public string DefaultVoice { get; set; } = "alloy";
+    
+    /// <summary>
+    /// Speech speed. Range: 0.25 to 4.0. Default: 1.0
+    /// </summary>
+    public double Speed { get; set; } = 1.0;
+    
+    /// <summary>
+    /// Instructions for tone/style (only supported by gpt-4o-mini-tts model).
+    /// Ignored for tts-1 and tts-1-hd models.
+    /// Example: "Speak in a calm, friendly tone."
+    /// </summary>
+    public string? Instructions { get; set; }
+    
     public Dictionary<string, string> VoiceByLanguage { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

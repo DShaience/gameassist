@@ -78,13 +78,33 @@ public sealed class AzureOpenAiTtsService : ITtsService, IAsyncDisposable
         
         var url = $"{endpoint}/openai/deployments/{deployment}/audio/speech?api-version={apiVersion}";
 
-        var requestBody = new
+        var speed = Math.Clamp(_config.Speed, 0.25, 4.0);
+        
+        // Build request body - instructions only supported by gpt-4o-mini-tts
+        object requestBody;
+        if (!string.IsNullOrWhiteSpace(_config.Instructions))
         {
-            model = deployment,
-            input = text,
-            voice = voice,
-            response_format = "mp3"
-        };
+            requestBody = new
+            {
+                model = deployment,
+                input = text,
+                voice = voice,
+                speed = speed,
+                instructions = _config.Instructions,
+                response_format = "mp3"
+            };
+        }
+        else
+        {
+            requestBody = new
+            {
+                model = deployment,
+                input = text,
+                voice = voice,
+                speed = speed,
+                response_format = "mp3"
+            };
+        }
 
         var json = JsonSerializer.Serialize(requestBody);
         using var content = new StringContent(json, Encoding.UTF8, "application/json");

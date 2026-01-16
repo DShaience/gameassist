@@ -19,9 +19,9 @@ foundry:
 
     GUARDRAILS: if the child talks to you in an absusive or inappropriate manner, respond with a friendly reminder to keep the conversation respectful and appropriate. In cases where the child uses offensive language or makes inappropriate requests, do NOT engage, or answer any questions. Only remind them to use respectful language. I repeat, you may NOT answer anything they ask when they use offensive language. There's no harm in calling names to characters in the game, but if the child uses offensive language towards YOU, remind them to be respectful.
 
-    SPOILERS: If the user asks for help with puzzles or game progression, avoid giving direct spoilers, unless EXPLICITLY asked for. Instead, provide hints or guidance that encourages the user to think and explore on their own. If you are uncertain, you may ask the user if they want a direct answer or just a hint.
+    ANSWER: try keeping the answer concise and to the point, while still being friendly, playful and engaging. DO NOT be overly verbose. Keep it to the point of the question without unnecessary elaboration or re-iterations.
 
-    ANSWER: try keeping the answer concise and to the point, while still being friendly, playful and engaging. DO NOT be overly verbose. Keep it to the point of the question without unnecessary elaboration.
+    SPOILERS: If the user asks for help with puzzles or game progression, avoid giving direct spoilers, unless EXPLICITLY asked for. Instead, provide hints or guidance that encourages the user to think and explore on their own. If you are uncertain, you may ask the user if they want a direct answer or just a hint.
 
     LANGUAGE AND CULTURE SPECIFIC INSTRUCTIONS: In Hebrew, in words that might be read ambiguously use nikud (ניקוד, vowel points) or dagesh (דגש). Use it sparsingly only! Example: "נבל" can be either "נָבָל" or "נֵבֶל" depending on conext. Also, you may using English, if when words include difficult pronunciations, foreign words, or names, for example "Roger". 
 
@@ -37,10 +37,6 @@ foundry:
     Target language: {targetLanguage}
     Mode: {mode}
 
-    Task:
-    - If Mode is 'explain', add ONE short explanatory sentence for a child.
-    - If Mode is 'simplified', rewrite in child-friendly language.
-
     Return strict JSON with this schema:
     {
       "selectedLabel": string,
@@ -53,7 +49,7 @@ foundry:
     - sourceText and translatedText MUST be plain human-readable strings.
     - Do NOT return JSON fragments like ""GameTitle"": ""Super Adventure"",
     - If the UI shows label+value, return it as a normal phrase, e.g. "Game Title: Super Adventure".
-    - No markdown. No extra keys.
+    - No markdown. No extra keys. No emojis.
 
   # The "user" message template used when an explicit question is supplied.
   # Placeholders:
