@@ -76,8 +76,8 @@ public sealed class ConsoleLogger : ILogger
     }
 
     /// <summary>
-    /// Prepends a Unicode Right-to-Left Mark if the text contains Hebrew characters.
-    /// This improves display in terminals that support bidirectional text.
+    /// Adjusts text with mixed LTR (English) and RTL (Hebrew) content for better console display.
+    /// Uses Unicode Right-to-Left Isolate (RLI) to wrap Hebrew segments.
     /// </summary>
     private static string AdjustForRtl(string text)
     {
@@ -88,13 +88,49 @@ public sealed class ConsoleLogger : ILogger
         // Check if any character is in the Hebrew block
         bool hasHebrew = text.Any(c => c >= '\u0590' && c <= '\u05FF');
         
-        if (hasHebrew)
+        if (!hasHebrew)
+            return text;
+
+        // For mixed content, use Unicode Bidi formatting characters:
+        // RLI (Right-to-Left Isolate) = U+2067 - starts RTL isolation
+        // PDI (Pop Directional Isolate) = U+2069 - ends isolation
+        // This keeps English labels LTR while Hebrew content renders RTL
+
+        const char RLI = '\u2067';  // Right-to-Left Isolate
+        const char PDI = '\u2069';  // Pop Directional Isolate
+        const char RLM = '\u200F';  // Right-to-Left Mark
+
+        var result = new System.Text.StringBuilder();
+        bool inHebrew = false;
+
+        foreach (var ch in text)
         {
-            // Prepend Right-to-Left Mark (RLM, U+200F) to hint RTL rendering
-            return "\u200F" + text;
+            bool isHebrewChar = ch >= '\u0590' && ch <= '\u05FF';
+
+            if (isHebrewChar && !inHebrew)
+            {
+                // Start Hebrew segment
+                result.Append(RLI);
+                inHebrew = true;
+            }
+            else if (!isHebrewChar && inHebrew && !char.IsWhiteSpace(ch) && ch != '.' && ch != ',' && ch != '!' && ch != '?')
+            {
+                // End Hebrew segment (but keep punctuation and spaces inside)
+                result.Append(PDI);
+                inHebrew = false;
+            }
+
+            result.Append(ch);
         }
 
-        return text;
+        // Close any open Hebrew segment
+        if (inHebrew)
+        {
+            result.Append(PDI);
+        }
+
+        // Also prepend RLM for overall RTL hint
+        return RLM + result.ToString();
     }
 }
 

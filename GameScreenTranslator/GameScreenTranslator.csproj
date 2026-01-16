@@ -8,6 +8,9 @@
 
     <!-- System tray icon support via System.Windows.Forms.NotifyIcon -->
     <UseWindowsForms>true</UseWindowsForms>
+
+    <!-- Suppress NU1510 warning for System.Drawing.Common (used for screen capture) -->
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

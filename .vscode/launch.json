@@ -1,0 +1,50 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "GameScreenTranslator (Hotkey Mode)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/GameScreenTranslator/bin/Debug/net10.0-windows/GameScreenTranslator.exe",
+            "args": ["--hotkey-mode"],
+            "cwd": "${workspaceFolder}/GameScreenTranslator",
+            "console": "integratedTerminal",
+            "stopAtEntry": false,
+            "env": {}
+        },
+        {
+            "name": "GameScreenTranslator (Capture Once)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/GameScreenTranslator/bin/Debug/net10.0-windows/GameScreenTranslator.exe",
+            "args": ["--capture-once"],
+            "cwd": "${workspaceFolder}/GameScreenTranslator",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        },
+        {
+            "name": "GameScreenTranslator (Translate Once)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/GameScreenTranslator/bin/Debug/net10.0-windows/GameScreenTranslator.exe",
+            "args": ["--foundry-translate-once"],
+            "cwd": "${workspaceFolder}/GameScreenTranslator",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        },
+        {
+            "name": "GameScreenTranslator (Cycle Demo)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/GameScreenTranslator/bin/Debug/net10.0-windows/GameScreenTranslator.exe",
+            "args": ["--cycle-demo"],
+            "cwd": "${workspaceFolder}/GameScreenTranslator",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        }
+    ]
+}

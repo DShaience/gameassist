@@ -43,8 +43,6 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
     private readonly object _sync = new();
 
     private CancellationTokenSource? _operationCts;
-    private bool _isRecordingQuestion;
-    private WindowCaptureResult? _questionSnapshot;
     private bool _isDisposed;
 
     private int _translateHotkeyId;
@@ -801,12 +799,6 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         _hotkeys.Unregister(_resetConversationHotkeyId);
 
         _hotkeys.Dispose();
-
-        lock (_sync)
-        {
-            _questionSnapshot?.Screenshot.Dispose();
-            _questionSnapshot = null;
-        }
 
         CancelCurrentOperation();
 

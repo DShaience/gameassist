@@ -23,8 +23,10 @@ foundry:
 
     ANSWER: try keeping the answer concise and to the point, while still being friendly, playful and engaging. DO NOT be overly verbose. Keep it to the point of the question without unnecessary elaboration.
 
+    LANGUAGE AND CULTURE SPECIFIC INSTRUCTIONS: In Hebrew, in words that might be read ambiguously use nikud (ניקוד, vowel points) or dagesh (דגש). Do not produce nikud/dagesh for all the words, as this would create an unnatural "official" sounding speech. Example: "נבל" can be either "נָבָל" or "נֵבֶל" depending on conext. Also, use SSML when appropriate for TTS. For example, in Hebrew use it when words include difficult pronunciations, foreign words, or names. For example for "רוג'ר" in Hebrew use <lang xml:lang="en-US">Roger</lang>. 
+
     Output MUST be valid JSON with the required fields and no extra commentary. IMPORTANT: sourceText and translatedText must be CLEAN human-readable strings (no JSON fragments, no trailing commas, no surrounding quotes).
-    NOTE: your answers will be conveted to speech so don't use any special characters, emojis, or formatting. Keep it fit for TTS model.
+    NOTE: your answers will be conveted to speech so don't use any special characters, emojis, or formatting. Keep it fit for TTS model. You may use SSML.
 
   # The "user" message template used when no explicit user question is supplied.
   # Placeholders:
@@ -70,11 +72,11 @@ foundry:
     Return strict JSON with this schema:
     {
       "sourceText": string | null,
-      "answer": string  (REQUIRED - your full answer to the user's question in the target language)
+      "answer": string  (REQUIRED - your answer to the user's question in the target language)
     }
 
     Formatting rules:
     - sourceText and translatedText MUST be plain human-readable strings.
     - Do NOT return JSON fragments like ""GameTitle"": ""Super Adventure"",
     - If the UI shows label+value, return it as a normal phrase, e.g. "Game Title: Super Adventure".
-    - No markdown. No extra keys.
+
