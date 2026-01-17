@@ -78,14 +78,6 @@ public static class ConfigValidator
                 "Providers.AzureFoundry.LLM.VisionDeployment is empty in appsettings.json. " +
                 "Please add the name of your vision-capable model deployment (e.g., 'gpt-4o').");
         }
-
-        // Translation
-        if (string.IsNullOrWhiteSpace(settings.Translation.TargetLanguage))
-        {
-            errors.Add(
-                "Translation.TargetLanguage is empty in appsettings.json. " +
-                "Please set the language you want translations spoken in (e.g., 'Hebrew', 'Russian').");
-        }
     }
 
     private static void ValidatePrompts(PromptPack prompts, List<string> errors)

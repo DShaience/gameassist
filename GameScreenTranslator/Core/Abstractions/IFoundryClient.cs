@@ -20,7 +20,6 @@ public interface IFoundryClient
         string windowTitle,
         PriorityCycler.UiPriority priority,
         string targetLanguage,
-        string mode,
         string? userQuestion = null);
 
     Task<TranslateCycleResponse> TranslateCycleAsync(
@@ -28,7 +27,6 @@ public interface IFoundryClient
         string windowTitle,
         PriorityCycler.UiPriority priority,
         string targetLanguage,
-        string mode,
         string? userQuestion = null,
         int? downscaleWidthOverride = null,
         Action<string>? onRawModelContent = null,

@@ -9,6 +9,12 @@ namespace GameScreenTranslator.Core.Configuration;
 /// </summary>
 public sealed class AudioConfig
 {
+    /// <summary>
+    /// The target language for TTS output and LLM responses (e.g., "Hebrew", "Russian", "English").
+    /// TTS services use this to select the appropriate voice via VoiceByLanguage mappings.
+    /// </summary>
+    public string Language { get; set; } = "Hebrew";
+    
     public TtsConfig Tts { get; set; } = new();
     public SttConfig Stt { get; set; } = new();
 }

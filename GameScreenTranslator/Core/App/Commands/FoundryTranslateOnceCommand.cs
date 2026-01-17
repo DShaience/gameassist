@@ -39,8 +39,7 @@ public sealed class FoundryTranslateOnceCommand : ICliCommand
                 screenshot: result.Screenshot,
                 windowTitle: result.WindowTitle,
                 priority: priority,
-                targetLanguage: ctx.Settings.Translation.TargetLanguage,
-                mode: ctx.Settings.Translation.Mode,
+                targetLanguage: ctx.AudioConfig.Language,
                 downscaleWidthOverride: ctx.Settings.ScreenCapture.DownscaleWidth,
                 onRawModelContent: printRaw
                     ? raw =>
@@ -65,7 +64,7 @@ public sealed class FoundryTranslateOnceCommand : ICliCommand
                 toSpeak = $"{toSpeak}. {response.Explanation}";
 
             var tts = TtsServiceFactory.Create(ctx.AudioConfig.Tts);
-            await tts.SpeakAsync(toSpeak, ctx.Settings.Translation.TargetLanguage);
+            await tts.SpeakAsync(toSpeak, ctx.AudioConfig.Language);
 
             if (tts is IAsyncDisposable disposable)
                 await disposable.DisposeAsync();

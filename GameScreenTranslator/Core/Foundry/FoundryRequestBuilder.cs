@@ -34,7 +34,6 @@ public sealed class FoundryRequestBuilder
         string windowTitle,
         PriorityCycler.UiPriority priority,
         string targetLanguage,
-        string mode,
         string? userQuestion = null)
     {
         var template = string.IsNullOrWhiteSpace(userQuestion)
@@ -46,7 +45,7 @@ public sealed class FoundryRequestBuilder
             ["windowTitle"] = windowTitle,
             ["priority"] = priority.ToString(),
             ["targetLanguage"] = targetLanguage,
-            ["mode"] = mode,
+            ["mode"] = "explain", // Legacy placeholder - mode is now always "explain"
             ["userQuestion"] = userQuestion
         };
 
@@ -106,12 +105,11 @@ public sealed class FoundryRequestBuilder
         string windowTitle,
         PriorityCycler.UiPriority priority,
         string targetLanguage,
-        string mode,
         string? userQuestion,
         string imageDataUrl)
     {
         var systemText = GetSystemPrompt();
-        var userText = BuildUserPromptText(windowTitle, priority, targetLanguage, mode, userQuestion);
+        var userText = BuildUserPromptText(windowTitle, priority, targetLanguage, userQuestion);
 
         return new List<FoundryMessage>
         {

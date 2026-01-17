@@ -45,7 +45,6 @@ public sealed class InteractionLoggerTests
                 Translation = new InteractionLogEntry.TranslationData
                 {
                     TargetLanguage = "Hebrew",
-                    Mode = "explain",
                     TranslatedText = "שלום",
                     SpokenText = "שלום"
                 },

@@ -55,8 +55,6 @@ public sealed class InteractionLogEntry
     public sealed class TranslationData
     {
         public string? TargetLanguage { get; set; }
-        public string? Mode { get; set; }
-
         public string? TranslatedText { get; set; }
         public string? Explanation { get; set; }
         public string? SpokenText { get; set; }

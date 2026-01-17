@@ -63,10 +63,9 @@ public sealed class AzureFoundryClient : IFoundryClient
         string windowTitle,
         PriorityCycler.UiPriority priority,
         string targetLanguage,
-        string mode,
         string? userQuestion = null)
     {
-        return _requestBuilder.BuildUserPromptText(windowTitle, priority, targetLanguage, mode, userQuestion);
+        return _requestBuilder.BuildUserPromptText(windowTitle, priority, targetLanguage, userQuestion);
     }
 
     /// <summary>
@@ -136,7 +135,6 @@ public sealed class AzureFoundryClient : IFoundryClient
         string windowTitle,
         PriorityCycler.UiPriority priority,
         string targetLanguage,
-        string mode,
         string? userQuestion = null,
         int? downscaleWidthOverride = null,
         Action<string>? onRawModelContent = null,
@@ -145,7 +143,6 @@ public sealed class AzureFoundryClient : IFoundryClient
         if (screenshot is null) throw new ArgumentNullException(nameof(screenshot));
         if (string.IsNullOrWhiteSpace(windowTitle)) throw new ArgumentException("Window title cannot be empty.", nameof(windowTitle));
         if (string.IsNullOrWhiteSpace(targetLanguage)) throw new ArgumentException("Target language cannot be empty.", nameof(targetLanguage));
-        if (string.IsNullOrWhiteSpace(mode)) throw new ArgumentException("Mode cannot be empty.", nameof(mode));
 
         var deployment = _settings.LLM.VisionDeployment;
         if (string.IsNullOrWhiteSpace(deployment))
@@ -155,7 +152,7 @@ public sealed class AzureFoundryClient : IFoundryClient
         var imageDataUrl = FoundryRequestBuilder.PrepareScreenshotDataUrl(screenshot, downscaleWidth);
 
         var foundryMessages = _requestBuilder.BuildTranslateMessages(
-            windowTitle, priority, targetLanguage, mode, userQuestion, imageDataUrl);
+            windowTitle, priority, targetLanguage, userQuestion, imageDataUrl);
 
         var request = new ChatCompletionsRequest
         {

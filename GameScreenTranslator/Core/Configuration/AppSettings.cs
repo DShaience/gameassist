@@ -5,7 +5,6 @@ namespace GameScreenTranslator.Core.Configuration;
 public sealed class AppSettings
 {
     public ProvidersSettings Providers { get; set; } = new();
-    public TranslationSettings Translation { get; set; } = new();
     public ScreenCaptureSettings ScreenCapture { get; set; } = new();
     public AudioSettings Audio { get; set; } = new();
     public HotkeysSettings Hotkeys { get; set; } = new();
@@ -38,13 +37,7 @@ public sealed class AppSettings
 
     public sealed class AzureSpeechSettings
     {
-        public string ConfigPath { get; set; } = "speech_language_config.json";
-    }
-
-    public sealed class TranslationSettings
-    {
-        public string TargetLanguage { get; set; } = "Hebrew";
-        public string Mode { get; set; } = "explain";
+        public string ConfigPath { get; set; } = "audio_config.json";
     }
 
     public sealed class ScreenCaptureSettings

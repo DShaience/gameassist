@@ -230,8 +230,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                     screenshot: result.Screenshot,
                     windowTitle: result.WindowTitle,
                     priority: priority.Value,
-                    targetLanguage: _settings.Translation.TargetLanguage,
-                    mode: _settings.Translation.Mode,
+                    targetLanguage: _audioConfig.Language,
                     userQuestion: null,
                     downscaleWidthOverride: _settings.ScreenCapture.DownscaleWidth,
                     onRawModelContent: raw =>
@@ -258,7 +257,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
                 Log.Info($"TTS: {spokenText}");
                 ttsSw = InteractionLogger.StartTimer();
-                await _tts.SpeakAsync(spokenText, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+                await _tts.SpeakAsync(spokenText, _audioConfig.Language, cts.Token).ConfigureAwait(false);
                 ttsSw.Stop();
             }
 
@@ -272,9 +271,9 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
             try
             {
-                var fallback = FallbackSpeech.ResolveGenericErrorMessage(_settings, _settings.Translation.TargetLanguage);
+                var fallback = FallbackSpeech.ResolveGenericErrorMessage(_settings, _audioConfig.Language);
                 Log.Info($"TTS (fallback): {fallback}");
-                await _tts.SpeakAsync(fallback, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+                await _tts.SpeakAsync(fallback, _audioConfig.Language, cts.Token).ConfigureAwait(false);
             }
             catch
             {
@@ -308,8 +307,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                         ? null
                         : new InteractionLogEntry.TranslationData
                         {
-                            TargetLanguage = _settings.Translation.TargetLanguage,
-                            Mode = _settings.Translation.Mode,
+                            TargetLanguage = _audioConfig.Language,
                             TranslatedText = response.TranslatedText,
                             Explanation = response.Explanation,
                             SpokenText = spokenText
@@ -412,8 +410,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             var userPrompt = _foundryClient.BuildUserPromptText(
                 snap.WindowTitle,
                 PriorityCycler.UiPriority.Highlighted,
-                _settings.Translation.TargetLanguage,
-                _settings.Translation.Mode,
+                _audioConfig.Language,
                 question);
 
             conversationTurnCount = _conversationStore.TurnCount;
@@ -454,7 +451,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
             Log.Info($"TTS: {spokenText}");
             ttsSw = InteractionLogger.StartTimer();
-            await _tts.SpeakAsync(spokenText, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+            await _tts.SpeakAsync(spokenText, _audioConfig.Language, cts.Token).ConfigureAwait(false);
             ttsSw.Stop();
         }
         catch (Exception ex)
@@ -464,9 +461,9 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
             try
             {
-                var fallback = FallbackSpeech.ResolveGenericErrorMessage(_settings, _settings.Translation.TargetLanguage);
+                var fallback = FallbackSpeech.ResolveGenericErrorMessage(_settings, _audioConfig.Language);
                 Log.Info($"TTS (fallback): {fallback}");
-                await _tts.SpeakAsync(fallback, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+                await _tts.SpeakAsync(fallback, _audioConfig.Language, cts.Token).ConfigureAwait(false);
             }
             catch
             {
@@ -508,8 +505,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                         ? null
                         : new InteractionLogEntry.TranslationData
                         {
-                            TargetLanguage = _settings.Translation.TargetLanguage,
-                            Mode = _settings.Translation.Mode,
+                            TargetLanguage = _audioConfig.Language,
                             TranslatedText = response.TranslatedText,
                             Explanation = response.Explanation,
                             SpokenText = spokenText
@@ -551,7 +547,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             Log.Info($"Conversation cleared ({turnCount} turns)");
 
             // Speak confirmation
-            var confirmationMessage = _settings.Translation.TargetLanguage.ToLowerInvariant() switch
+            var confirmationMessage = _audioConfig.Language.ToLowerInvariant() switch
             {
                 "hebrew" => "השיחה נמחקה.",
                 "russian" => "Разговор сброшен.",
@@ -559,7 +555,7 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             };
 
             using var cts = NewOperationCts();
-            await _tts.SpeakAsync(confirmationMessage, _settings.Translation.TargetLanguage, cts.Token).ConfigureAwait(false);
+            await _tts.SpeakAsync(confirmationMessage, _audioConfig.Language, cts.Token).ConfigureAwait(false);
 
             // Log the reset
             try
