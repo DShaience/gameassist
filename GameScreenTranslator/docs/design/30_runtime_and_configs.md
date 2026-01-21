@@ -1,5 +1,5 @@
 # Runtime layout & Configuration (P0)
-Last updated: 2026-01-13
+Last updated: 2026-01-21
 
 ## Runtime base directory (where configs/logs live)
 At runtime the app resolves a `baseDir` (see `ResolveRuntimeBaseDir()` in `GameScreenTranslator/Program.cs`):
@@ -15,7 +15,7 @@ All relative config paths are resolved under this `baseDir`.
 ## First-run bootstrap behavior (portable EXE + dev)
 On startup, `ConfigBootstrapper.EnsureConfigFilesExist(baseDir)` creates missing files from **embedded resources**:
 - `appsettings.json` from embedded `appsettings.template.json`
-- `speech_language_config.json` from embedded `speech_language_config.template.json`
+- `audio_config.json` from embedded `audio_config.template.json`
 - `configs/prompts.yaml` from embedded `prompts.template.yaml`
 - `Assets/Sounds/tap-notification-357575.mp3` from embedded sound asset (earcons)
 
@@ -33,10 +33,7 @@ Key sections (P0):
   - `ApiVersion` (default `2024-10-21`)
   - `LLM.*` (deployments, retry attempts, timeout)
 - `Providers.AzureSpeech.ConfigPath`
-  - defaults to `speech_language_config.json`
-- `Translation`
-  - `TargetLanguage` (e.g., `"Hebrew"`, `"Russian"`)
-  - `Mode` (`realistic|simplified|explain`)
+  - defaults to `audio_config.json`
 - `Hotkeys` (fully configurable as of 2026-01-15)
   - `Translate` (default: `Ctrl+Alt+T`) - Translate what's on screen
   - `Ask` (default: `Ctrl+Alt+W`) - Tap-to-talk question mode
@@ -66,16 +63,31 @@ Key sections (P0):
   - `LogFilePath` (JSONL)
   - `IncludeScreenshotsInDebug`
 
-### 2) `speech_language_config.json` (Azure Speech settings + voices)
-Template: `GameScreenTranslator/speech_language_config.template.json`  
-Loaded by: `Core/Configuration/SpeechLanguageConfigLoader.cs` into `Core/Configuration/SpeechLanguageConfig.cs`
+### 2) `audio_config.json` (Audio services - TTS, STT, and Language)
+Template: `GameScreenTranslator/audio_config.template.json`  
+Loaded by: `Core/Configuration/AudioConfigLoader.cs` into `Core/Configuration/AudioConfig.cs`
 
 Key sections:
-- `AzureSpeech.Endpoint`, `ApiKey`, `Region`
-- `TextToSpeech.DefaultVoiceName` + `VoiceByLanguage`
-- `SpeechToText.DefaultRecognitionLanguage`
-- `SpeechToText.CandidateLanguages`
-- `SpeechToText.EnableAutoLanguageDetection`
+- `Language` - **Single source of truth for target language** (e.g., `"Hebrew"`, `"Russian"`, `"English"`)
+  - Used by TTS for voice selection (via `VoiceByLanguage` mappings)
+  - Passed to LLM prompts so responses are in the target language
+- `Tts` - Text-to-Speech configuration
+  - `Provider` - Which TTS service to use: `"AzureCognitive"` or `"AzureOpenAi"`
+  - `AzureCognitive` - Azure Cognitive Services Speech
+    - `Endpoint`, `ApiKey`, `Region`
+    - `DefaultVoiceName` + `VoiceByLanguage`
+  - `AzureOpenAi` - Azure OpenAI TTS (gpt-4o-mini-tts)
+    - `Endpoint`, `ApiKey`, `Deployment`, `ApiVersion`
+    - `DefaultVoice` + `VoiceByLanguage`
+    - `Speed` (0.25-4.0, default 1.0)
+    - `Instructions` (tone/style instructions, only for gpt-4o-mini-tts)
+- `Stt` - Speech-to-Text configuration
+  - `Provider` - Currently only `"AzureCognitive"` supported
+  - `AzureCognitive`
+    - `Endpoint`, `ApiKey`, `Region`
+    - `DefaultRecognitionLanguage`
+    - `CandidateLanguages` (for auto-detection)
+    - `EnableAutoLanguageDetection`
 
 ### 3) Prompt pack (`configs/prompts.yaml`)
 #### Why there are two files
@@ -119,8 +131,8 @@ Supported formats: MP3, WAV (via NAudio library)
 ## Friends distribution package
 For friends-only testing, use `scripts/publish-friends.ps1` to create a ZIP containing:
 - `GameScreenTranslator.exe` (self-contained single-file)
-- `appsettings.json` (with your API keys)
-- `speech_language_config.json` (with your Azure Speech keys)
+- `appsettings.json` (with your LLM API keys)
+- `audio_config.json` (with your TTS/STT API keys and language setting)
 - `configs/prompts.yaml`
 - `Assets/Sounds/tap-notification-357575.mp3`
 - `QUICKSTART.txt` (setup instructions)

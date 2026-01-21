@@ -37,7 +37,7 @@
 - Secondary: parent helping with setup; parent may not know the game
 
 Key scenarios:
-1. Child holds Ask hotkey, asks "What do I do now?", releases; app answers and speaks. ✅
+1. Child presses Ask (tap-to-talk) hotkey, asks "What do I do now?"; app answers and speaks. ✅
 2. Child hits Stop hotkey; speech stops quickly. ✅
 3. App is slow (cloud); child gets feedback that it's "thinking". ✅
 4. Common misconfig (bad endpoint/key) produces a clear spoken + logged message. ✅

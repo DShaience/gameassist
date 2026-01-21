@@ -7,7 +7,7 @@
 #
 # Prerequisites:
 #   - .NET 10 SDK installed
-#   - Your appsettings.json and speech_language_config.json with real API keys
+#   - Your appsettings.json and audio_config.json with real API keys
 #     must exist in GameScreenTranslator/ directory
 
 param(
@@ -29,7 +29,7 @@ Write-Host ""
 
 # Verify source configs exist with real keys
 $appSettingsSource = Join-Path $projectDir "appsettings.json"
-$speechConfigSource = Join-Path $projectDir "speech_language_config.json"
+$audioConfigSource = Join-Path $projectDir "audio_config.json"
 $promptsSource = Join-Path $projectDir "configs" "prompts.yaml"
 $soundSource = Join-Path $projectDir "Assets" "Sounds" "tap-notification-357575.mp3"
 $quickstartSource = Join-Path $repoRoot "product" "prds" "QUICKSTART.txt"
@@ -38,8 +38,8 @@ if (-not (Test-Path $appSettingsSource)) {
     Write-Error "Missing $appSettingsSource - create it with your API keys first"
     exit 1
 }
-if (-not (Test-Path $speechConfigSource)) {
-    Write-Error "Missing $speechConfigSource - create it with your Azure Speech keys first"
+if (-not (Test-Path $audioConfigSource)) {
+    Write-Error "Missing $audioConfigSource - create it with your TTS/STT API keys first"
     exit 1
 }
 
@@ -87,7 +87,7 @@ New-Item -ItemType Directory -Path (Join-Path $outDir "Assets" "Sounds") | Out-N
 # Copy files
 Copy-Item $exePath $outDir
 Copy-Item $appSettingsSource $outDir
-Copy-Item $speechConfigSource $outDir
+Copy-Item $audioConfigSource $outDir
 Copy-Item $promptsSource (Join-Path $outDir "configs")
 Copy-Item $soundSource (Join-Path $outDir "Assets" "Sounds")
 Copy-Item $quickstartSource $outDir

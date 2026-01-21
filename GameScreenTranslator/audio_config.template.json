@@ -3,17 +3,19 @@
     "Description": "Audio configuration for TTS and STT services",
     "TtsProviders": "AzureCognitive, AzureOpenAi",
     "SttProviders": "AzureCognitive",
-    "AzureCognitiveVoices": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts",
+    "AzureCognitiveVoices": "",
     "AzureOpenAiVoices": "alloy, echo, fable, onyx, nova, shimmer"
   },
+
+  "Language": "Hebrew",
 
   "Tts": {
     "Provider": "AzureOpenAi",
 
     "AzureCognitive": {
-      "Endpoint": "ENDPOINT",
-      "ApiKey": "API KEY HERE",
-      "Region": "",
+      "Endpoint": "",
+      "ApiKey": "",
+      "Region": "westus",
       "DefaultVoiceName": "he-IL-HilaNeural",
       "VoiceByLanguage": {
         "he-IL": "he-IL-HilaNeural",
@@ -26,16 +28,18 @@
     },
 
     "AzureOpenAi": {
-      "Endpoint": "ENDPOINT",
-      "ApiKey": "API KEY HERE",
-      "Deployment": "tts-hd",
+      "Endpoint": "",
+      "ApiKey": "",
+      "Deployment": "gpt-4o-mini-tts",
       "ApiVersion": "2025-03-01-preview",
-      "DefaultVoice": "alloy",
+      "DefaultVoice": "marin",
+      "Speed": 1.1,
+      "Instructions": "Speak in a friendly, enthusiastic tone. Be clear and helpful.",
       "VoiceByLanguage": {
-        "Hebrew": "nova",
+        "Hebrew": "marin",
         "Russian": "echo",
         "English": "alloy",
-        "he-IL": "nova",
+        "he-IL": "marin",
         "ru-RU": "echo",
         "en-US": "alloy"
       }
@@ -46,9 +50,9 @@
     "Provider": "AzureCognitive",
 
     "AzureCognitive": {
-      "Endpoint": "ENDPOINT",
-      "ApiKey": "API KEY HERE",
-      "Region": "",
+      "Endpoint": "",
+      "ApiKey": "",
+      "Region": "westus",
       "DefaultRecognitionLanguage": "he-IL",
       "CandidateLanguages": [
         "he-IL",

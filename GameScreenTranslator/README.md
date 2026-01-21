@@ -3,14 +3,12 @@ A Windows desktop assistant that helps children (ages 5–10) access games that 
 
 ## Setup Instructions
 
-### 1. Configure Model & Speech Credentials
-
-This app can now speak output via Azure Speech TTS when you run `--foundry-translate-once`.
-To enable this, you must also configure `speech_language_config.json`.
+### 1. Configure Model & Audio Credentials
 
 This project uses **multiple services**:
-- **Azure Foundry** for the LLM / vision model (translation + explain)
-- **Azure Speech** for **TTS** and **STT**
+- **Azure Foundry** for the LLM / vision model (understanding game screens + answering questions)
+- **TTS** (Text-to-Speech) via Azure Cognitive Services or Azure OpenAI
+- **STT** (Speech-to-Text) via Azure Cognitive Services
 
 Both are configured via local JSON files that are gitignored.
 
@@ -22,34 +20,39 @@ Both are configured via local JSON files that are gitignored.
    ```
 
 2. Edit `appsettings.json` and fill in:
-
 - `Providers.AzureFoundry.Endpoint`
 - `Providers.AzureFoundry.ApiKey`
 - `Providers.AzureFoundry.LLM.ChatDeployment`
 - `Providers.AzureFoundry.LLM.VisionDeployment`
 
-#### B) Speech config (Azure Speech TTS + STT + languages)
+#### B) Audio config (TTS + STT + Language)
 
-This is required for TTS in the current dev demo.
+This is required for voice input/output.
 
-1. Copy `speech_language_config.template.json` to `speech_language_config.json`:
+1. Copy `audio_config.template.json` to `audio_config.json`:
    ```cmd
-   copy speech_language_config.template.json speech_language_config.json
+   copy audio_config.template.json audio_config.json
    ```
 
-2. Edit `speech_language_config.json` and fill in:
-- `AzureSpeech.Endpoint`
-- `AzureSpeech.ApiKey`
-- `AzureSpeech.Region` (recommended)
+2. Edit `audio_config.json` and fill in:
+- `Language` - Target language for responses (e.g., `"Hebrew"`, `"Russian"`, `"English"`)
+- `Tts.Provider` - Choose `"AzureCognitive"` or `"AzureOpenAi"`
+- TTS credentials (based on your chosen provider)
+- `Stt.AzureCognitive.*` - STT credentials
 
-3. **Important:** `appsettings.json` and `speech_language_config.json` are gitignored and will never be committed to the repository.
+3. **Important:** `appsettings.json` and `audio_config.json` are gitignored and will never be committed to the repository.
 
 ### 2. Customize Settings (Optional)
 
-You can customize various settings in `appsettings.json`:
+You can customize various settings:
 
-- **Target Language**: Change `Translation.TargetLanguage` (Hebrew, Russian, etc.)
-- **Translation Mode**: Choose between `realistic`, `simplified`, or `explain` (default)
+**In `audio_config.json`:**
+- **Target Language**: Change `Language` (Hebrew, Russian, English, etc.)
+- **TTS Provider**: Switch between Azure Cognitive or Azure OpenAI TTS
+- **Voice Speed**: Adjust `Tts.AzureOpenAi.Speed` (0.25-4.0)
+- **Voice Instructions**: Set `Tts.AzureOpenAi.Instructions` for tone/style (gpt-4o-mini-tts only)
+
+**In `appsettings.json`:**
 - **Hotkeys**: Customize keyboard shortcuts
 - **Audio Ducking**: Adjust game volume reduction percentage
 - **Logging**: Control log verbosity and screenshot inclusion
@@ -150,7 +153,7 @@ Output:
 ### First run config behavior (published EXE)
 On first run, the app will **auto-create** these next to the EXE if they are missing:
 - `appsettings.json` (from embedded `appsettings.template.json`)
-- `speech_language_config.json` (from embedded `speech_language_config.template.json`)
+- `audio_config.json` (from embedded `audio_config.template.json`)
 
 You must then edit those JSON files and replace the placeholder values.
 

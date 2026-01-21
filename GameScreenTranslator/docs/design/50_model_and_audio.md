@@ -1,5 +1,5 @@
 # Model & Audio Design (P0)
-Last updated: 2026-01-10
+Last updated: 2026-01-21
 
 ## Model: Azure AI Foundry (vision LLM)
 ### Source of truth
@@ -59,7 +59,8 @@ If Foundry returns HTTP 400 with certain “unsupported parameter” messages, t
 - Else → `foundry.question_user`
 
 Supported template placeholders:
-- `{windowTitle}`, `{priority}`, `{targetLanguage}`, `{mode}`, `{userQuestion}`
+- `{windowTitle}`, `{priority}`, `{targetLanguage}`, `{userQuestion}`
+- Note: `{mode}` is still in templates for backward compatibility but always resolves to "explain"
 
 ### Expected model output contract
 `AzureFoundryClient` expects a JSON object that deserializes into `TranslateCycleResponse`.
@@ -74,28 +75,58 @@ Normalization:
 - Trims and cleans quotes/backticks
 - Attempts to clean “key:value” fragments into readable speech
 
-## Audio: Azure Speech
+## Audio Services
 ### Source of truth
-- TTS: `Core/Audio/AzureSpeechTtsService.cs`
-- STT: `Core/Audio/AzureSpeechSttService.cs` (see also `speech_language_config.json`)
+- Config: `audio_config.json` (loaded by `Core/Configuration/AudioConfigLoader.cs`)
+- TTS Factory: `Core/Audio/TtsServiceFactory.cs`
+- STT Factory: `Core/Audio/SttServiceFactory.cs`
+- TTS Implementations:
+  - `Core/Audio/AzureCognitiveTtsService.cs` (Azure Cognitive Services Speech)
+  - `Core/Audio/AzureOpenAiTtsService.cs` (Azure OpenAI TTS - gpt-4o-mini-tts)
+- STT Implementation: `Core/Audio/AzureCognitiveSttService.cs`
 - Fallback messages: `Core/App/FallbackSpeech.cs` + `appsettings.json` `Audio.*`
+
+### Language Configuration
+Target language is set in `audio_config.json`:
+- `Language` field (e.g., `"Hebrew"`, `"Russian"`, `"English"`)
+- This is the **single source of truth** for:
+  - TTS voice selection (via `VoiceByLanguage` mappings)
+  - LLM response language (passed to prompts as `{targetLanguage}`)
+
+### TTS Providers
+The app supports two TTS providers, selectable via `Tts.Provider` in `audio_config.json`:
+
+#### Azure Cognitive Services (`"AzureCognitive"`)
+- Uses Azure Cognitive Services Speech SDK
+- Voice selection via `Tts.AzureCognitive.VoiceByLanguage`
+- Supports neural voices (e.g., `he-IL-HilaNeural`)
+
+#### Azure OpenAI TTS (`"AzureOpenAi"`)
+- Uses Azure OpenAI REST API
+- Supports `tts-1`, `tts-1-hd`, and `gpt-4o-mini-tts` models
+- Voice selection via `Tts.AzureOpenAi.VoiceByLanguage`
+- Additional features:
+  - `Speed` (0.25-4.0, default 1.0)
+  - `Instructions` (tone/style instructions, only for gpt-4o-mini-tts)
 
 ### TTS behavior (P0)
 - `SpeakAsync(text, languageOrLocale)`
-  - Resolves voice name via `speech_language_config.json`:
-    - exact locale mapping (`he-IL`, `ru-RU`, `en-US`, etc.)
-    - also supports language labels (`Hebrew`, `Russian`, `English`) via simple mapping
-  - Uses `SpeechSynthesizer.SpeakTextAsync(text)`
+  - Resolves voice name via `VoiceByLanguage` mapping in config
+  - Supports both locale codes (`he-IL`) and language names (`Hebrew`)
 - `StopAsync()` interrupts current speech
 - Concurrency control: a `SemaphoreSlim` gate ensures one TTS operation at a time
 
 ### STT behavior (P0)
+Currently only Azure Cognitive Services STT is supported.
+
 Interaction style:
 - **Tap-to-talk** (`Ctrl+Alt+W`)
   - Recognize once with an end-silence timeout (default used: ~1500ms)
 
-Language handling (expected):
-- Candidate languages and optional auto language detection configured in `speech_language_config.json`.
+Language handling:
+- `Stt.AzureCognitive.DefaultRecognitionLanguage` - primary language
+- `Stt.AzureCognitive.CandidateLanguages` - languages for auto-detection
+- `Stt.AzureCognitive.EnableAutoLanguageDetection` - enable multi-language detection
 
 ### Ducking (planned)
 `appsettings.json` contains `Audio.DuckingEnabled` and volume parameters. End-to-end ducking of game audio is not a core requirement for current P0 implementation and may not be implemented fully.
