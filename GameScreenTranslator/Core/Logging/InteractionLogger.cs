@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,14 @@ public sealed class InteractionLogger : IInteractionLogger
         if (string.IsNullOrWhiteSpace(configuredPath))
             configuredPath = "logs/interactions.jsonl";
 
+        // Generate timestamp-based filename: yyyy_mm_dd__HHMMSS_interactions.jsonl
+        var timestamp = DateTime.Now.ToString("yyyy_MM_dd__HHmmss");
+        var dir = Path.GetDirectoryName(configuredPath) ?? "logs";
+        var ext = Path.GetExtension(configuredPath);
+        var baseName = Path.GetFileNameWithoutExtension(configuredPath);
+        var timestampedFilename = $"{timestamp}_{baseName}{ext}";
+        configuredPath = Path.Combine(dir, timestampedFilename);
+
         _logPath = Path.IsPathRooted(configuredPath)
             ? configuredPath
             : Path.Combine(baseDirectory, configuredPath);
@@ -46,7 +55,8 @@ public sealed class InteractionLogger : IInteractionLogger
         var json = JsonSerializer.Serialize(entry, new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-            WriteIndented = false
+            WriteIndented = false,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping // Preserve UTF-8 (Hebrew, Russian, etc.)
         });
 
         lock (_sync)

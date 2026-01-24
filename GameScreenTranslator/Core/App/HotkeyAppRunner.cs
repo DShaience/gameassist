@@ -346,6 +346,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
         var totalSw = InteractionLogger.StartTimer();
         Stopwatch? captureSw = null;
+        Stopwatch? sttSw = null;
+        Stopwatch? imageDownscaleSw = null;
         Stopwatch? modelSw = null;
         Stopwatch? ttsSw = null;
 
@@ -355,8 +357,12 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
         Core.Models.TranslateCycleResponse? response = null;
         var spokenText = "";
         string? error = null;
+        string? errorStage = null;
+        string? cancelStage = null;
         var conversationTurnCount = 0;
         string? conversationContextTextForLog = null;
+        TtsTimingInfo? ttsTimingInfo = null;
+        var outcome = "success";
 
         CancellationTokenSource? thinkingChimeCts = null;
         try
@@ -378,11 +384,22 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             sig = ScreenSignature.Compute(snap.WindowTitle, snap.Screenshot);
 
             Log.Info("Tap-to-talk: speak now (auto-stops after 1.5s silence)...");
-            question = await _stt.RecognizeOnceWithEndSilenceTimeoutAsync(1500, cts.Token).ConfigureAwait(false);
+            sttSw = InteractionLogger.StartTimer();
+            try
+            {
+                question = await _stt.RecognizeOnceWithEndSilenceTimeoutAsync(1500, cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                cancelStage = "stt";
+                throw;
+            }
+            sttSw.Stop();
 
             if (string.IsNullOrWhiteSpace(question))
             {
                 Log.Info("No question recognized");
+                outcome = "no_speech";
                 return;
             }
 
@@ -405,8 +422,11 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                 }
             });
 
-            // Build conversation context
+            // Build conversation context - measure image downscale time
+            imageDownscaleSw = InteractionLogger.StartTimer();
             var imageDataUrl = _foundryClient.PrepareScreenshotDataUrl(snap.Screenshot, _settings.ScreenCapture.DownscaleWidth);
+            imageDownscaleSw.Stop();
+
             var userPrompt = _foundryClient.BuildUserPromptText(
                 snap.WindowTitle,
                 PriorityCycler.UiPriority.Highlighted,
@@ -428,15 +448,23 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
             conversationContextTextForLog = BuildConversationContextTextForLog(question);
 
             modelSw = InteractionLogger.StartTimer();
-            response = await _foundryClient.SendWithMessagesAsync(
-                    messages,
-                    onRawModelContent: raw =>
-                    {
-                        Log.Debug("[Foundry Raw]");
-                        Log.Debug(raw);
-                    },
-                    cancellationToken: cts.Token)
-                .ConfigureAwait(false);
+            try
+            {
+                response = await _foundryClient.SendWithMessagesAsync(
+                        messages,
+                        onRawModelContent: raw =>
+                        {
+                            Log.Debug("[Foundry Raw]");
+                            Log.Debug(raw);
+                        },
+                        cancellationToken: cts.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                cancelStage = "llm";
+                throw;
+            }
             modelSw.Stop();
 
             try { thinkingChimeCts.Cancel(); } catch { /* ignore */ }
@@ -451,12 +479,33 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
             Log.Info($"TTS: {spokenText}");
             ttsSw = InteractionLogger.StartTimer();
-            await _tts.SpeakAsync(spokenText, _audioConfig.Language, cts.Token).ConfigureAwait(false);
+            try
+            {
+                ttsTimingInfo = await _tts.SpeakAsync(spokenText, _audioConfig.Language, cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                cancelStage = "tts";
+                throw;
+            }
             ttsSw.Stop();
+        }
+        catch (OperationCanceledException)
+        {
+            outcome = "cancelled";
+            // cancelStage is already set above
         }
         catch (Exception ex)
         {
+            outcome = "error";
             error = ex.ToString();
+
+            // Determine error stage based on which stopwatch was running
+            if (sttSw is not null && sttSw.IsRunning) errorStage = "stt";
+            else if (modelSw is not null && modelSw.IsRunning) errorStage = "llm";
+            else if (ttsSw is not null && ttsSw.IsRunning) errorStage = "tts";
+            else errorStage = "other";
+
             Log.Error(ex, "Tap-to-talk flow failed");
 
             try
@@ -482,6 +531,38 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
 
             try
             {
+                // Build detailed timings for latency analysis
+                var detailed = new InteractionLogEntry.DetailedTimings
+                {
+                    // Image processing
+                    ImageDownscaleMs = InteractionLogger.ElapsedMs(imageDownscaleSw),
+
+                    // STT
+                    SttMs = InteractionLogger.ElapsedMs(sttSw),
+                    SttProvider = "AzureCognitive", // Currently hardcoded
+
+                    // LLM
+                    LlmInputTokens = response?.PromptTokens,
+                    LlmOutputTokens = response?.CompletionTokens,
+                    LlmProvider = "Foundry",
+                    LlmModel = _settings.Providers.AzureFoundry.LLM.VisionDeployment,
+
+                    // TTS
+                    TtsNetworkMs = ttsTimingInfo?.NetworkMs,
+                    PlaybackStartDelayMs = ttsTimingInfo?.PlaybackStartDelayMs,
+                    TtsCharCount = string.IsNullOrEmpty(spokenText) ? null : spokenText.Length,
+                    TtsProvider = ttsTimingInfo?.Provider,
+                    TtsVoice = ttsTimingInfo?.VoiceName,
+
+                    // Summary
+                    TtfaUserMs = InteractionLogger.ElapsedMs(totalSw),
+
+                    // Outcome
+                    Outcome = outcome,
+                    CancelStage = cancelStage,
+                    ErrorStage = errorStage
+                };
+
                 var entry = new InteractionLogEntry
                 {
                     InteractionType = "question_tap",
@@ -515,7 +596,8 @@ public sealed class HotkeyAppRunner : IAsyncDisposable
                         Capture = InteractionLogger.ElapsedMs(captureSw),
                         ModelCall = InteractionLogger.ElapsedMs(modelSw),
                         Tts = InteractionLogger.ElapsedMs(ttsSw),
-                        Total = InteractionLogger.ElapsedMs(totalSw)
+                        Total = InteractionLogger.ElapsedMs(totalSw),
+                        Detailed = detailed
                     },
                     Error = error
                 };

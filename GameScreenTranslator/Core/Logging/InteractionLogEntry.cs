@@ -62,9 +62,50 @@ public sealed class InteractionLogEntry
 
     public sealed class LatencyData
     {
+        // Core timings (always logged)
         public int? Capture { get; set; }
         public int? ModelCall { get; set; }
         public int? Tts { get; set; }
         public int? Total { get; set; }
+
+        // Detailed breakdown for latency analysis
+        public DetailedTimings? Detailed { get; set; }
+    }
+
+    /// <summary>
+    /// Detailed timing breakdown for latency analysis (PRD 0001.5).
+    /// Helps identify which stage dominates Time To First Audio (TTFA).
+    /// </summary>
+    public sealed class DetailedTimings
+    {
+        // Image processing
+        public int? ImageDownscaleMs { get; set; }
+
+        // STT breakdown (Ask flow only)
+        public int? SttMs { get; set; }
+
+        // LLM breakdown
+        public int? LlmInputTokens { get; set; }
+        public int? LlmOutputTokens { get; set; }
+
+        // TTS breakdown
+        public int? TtsNetworkMs { get; set; }          // Time until first audio bytes received
+        public int? PlaybackStartDelayMs { get; set; } // Time from first bytes to first audio played
+        public int? TtsCharCount { get; set; }         // Characters sent to TTS
+
+        // Summary metrics
+        public int? TtfaUserMs { get; set; }           // Time To First Audio (from hotkey press)
+
+        // Outcome tracking
+        public string? Outcome { get; set; }           // success, timeout, error, cancelled
+        public string? CancelStage { get; set; }       // stt, llm, tts, playback, other (if cancelled)
+        public string? ErrorStage { get; set; }        // Which stage failed (if error)
+
+        // Provider info
+        public string? SttProvider { get; set; }
+        public string? LlmProvider { get; set; }
+        public string? LlmModel { get; set; }
+        public string? TtsProvider { get; set; }
+        public string? TtsVoice { get; set; }
     }
 }

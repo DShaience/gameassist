@@ -109,7 +109,7 @@ public sealed class AppSettings
             /// Delay before playing the thinking chime.
             /// Helps avoid chimes when the model responds very fast.
             /// </summary>
-            public int ThinkingDelayMs { get; set; } = 400;
+            public int ThinkingDelayMs { get; set; } = 300;
 
             /// <summary>
             /// Optional cancel/stop blip. Off by default to keep "stop" truly silent.

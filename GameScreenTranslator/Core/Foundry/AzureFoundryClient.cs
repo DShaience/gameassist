@@ -207,6 +207,10 @@ public sealed class AzureFoundryClient : IFoundryClient
                 if (output is null)
                     throw new InvalidOperationException("Model content could not be parsed as TranslateCycleResponse JSON.");
 
+                // Populate token usage from API response (not from model content)
+                output.PromptTokens = parsed.Usage?.PromptTokens;
+                output.CompletionTokens = parsed.Usage?.CompletionTokens;
+
                 FoundryResponseParser.NormalizeOutput(output);
                 return output;
             }
@@ -392,6 +396,9 @@ public sealed class AzureFoundryClient : IFoundryClient
     {
         [JsonPropertyName("choices")]
         public Choice[]? Choices { get; set; }
+
+        [JsonPropertyName("usage")]
+        public UsageInfo? Usage { get; set; }
     }
 
     private sealed class Choice
@@ -404,6 +411,18 @@ public sealed class AzureFoundryClient : IFoundryClient
     {
         [JsonPropertyName("content")]
         public string? Content { get; set; }
+    }
+
+    private sealed class UsageInfo
+    {
+        [JsonPropertyName("prompt_tokens")]
+        public int? PromptTokens { get; set; }
+
+        [JsonPropertyName("completion_tokens")]
+        public int? CompletionTokens { get; set; }
+
+        [JsonPropertyName("total_tokens")]
+        public int? TotalTokens { get; set; }
     }
 
     #endregion

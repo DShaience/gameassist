@@ -2,7 +2,6 @@ namespace GameScreenTranslator.Core.Models;
 
 /// <summary>
 /// Expected structured output from the vision+translation model call.
-/// P0 keeps this minimal; later we can extend with token usage, confidence, etc.
 /// </summary>
 public sealed class TranslateCycleResponse
 {
@@ -18,6 +17,18 @@ public sealed class TranslateCycleResponse
     /// When present, this is what should be spoken by TTS.
     /// </summary>
     public string? Answer { get; set; }
+
+    // Token usage info (populated from API response, not from model output)
+    // These are set by AzureFoundryClient after parsing the response.
+    /// <summary>
+    /// Number of tokens in the prompt (input).
+    /// </summary>
+    public int? PromptTokens { get; set; }
+
+    /// <summary>
+    /// Number of tokens in the completion (output).
+    /// </summary>
+    public int? CompletionTokens { get; set; }
 
     public sealed class BoundingBoxRect
     {

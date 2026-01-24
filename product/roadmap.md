@@ -4,6 +4,7 @@ This roadmap is optimized for “portable EXE shipped to friends” and a kid-fr
 
 ## Now (0–2 weeks): ship to friends safely
 - Reduce time-to-answer (capture→LLM→TTS) and make latency visible when slow
+- Add stage-level latency instrumentation (STT→LLM→TTS) to drive evidence-based optimization (PRD 0001.5)
 - Setup UX: first-run config creation is already present; make it hard to misconfigure
 - Robust cancellations: stop speaking / stop in-flight request should be reliable
 - Friend-test package: one EXE + clear instructions + lightweight troubleshooting

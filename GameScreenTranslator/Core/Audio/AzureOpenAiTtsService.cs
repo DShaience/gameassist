@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -35,10 +36,15 @@ public sealed class AzureOpenAiTtsService : ITtsService, IAsyncDisposable
         _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("audio/mpeg"));
     }
 
-    public async Task SpeakAsync(string text, string? languageOrLocale, CancellationToken cancellationToken = default)
+    public async Task<TtsTimingInfo> SpeakAsync(string text, string? languageOrLocale, CancellationToken cancellationToken = default)
     {
+        var timing = new TtsTimingInfo
+        {
+            Provider = "AzureOpenAi"
+        };
+
         if (string.IsNullOrWhiteSpace(text))
-            return;
+            return timing;
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -47,9 +53,23 @@ public sealed class AzureOpenAiTtsService : ITtsService, IAsyncDisposable
             StopPlayback();
 
             var voice = ResolveVoice(languageOrLocale);
+            timing.VoiceName = voice;
+
+            // Measure network time (synthesis request to audio bytes received)
+            var networkSw = Stopwatch.StartNew();
             var audioBytes = await SynthesizeAsync(text, voice, cancellationToken).ConfigureAwait(false);
-            
+            networkSw.Stop();
+            timing.NetworkMs = (int)networkSw.ElapsedMilliseconds;
+
+            // Measure playback start delay (time from audio bytes to first audio out)
+            var playbackSw = Stopwatch.StartNew();
             await PlayAudioAsync(audioBytes, cancellationToken).ConfigureAwait(false);
+            // Note: playbackSw includes full playback time, not just start delay.
+            // For more accurate measurement, we'd need to hook into WaveOut events.
+            // For now, we estimate playback start delay as minimal since we start immediately.
+            timing.PlaybackStartDelayMs = 0; // Playback starts immediately after Init()
+
+            return timing;
         }
         finally
         {

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using GameScreenTranslator.Core.Abstractions;
@@ -54,24 +55,42 @@ public sealed class AzureCognitiveTtsService : ITtsService, IAsyncDisposable
         }
     }
 
-    public async Task SpeakAsync(string text, string? languageOrLocale, CancellationToken cancellationToken = default)
+    public async Task<TtsTimingInfo> SpeakAsync(string text, string? languageOrLocale, CancellationToken cancellationToken = default)
     {
+        var timing = new TtsTimingInfo
+        {
+            Provider = "AzureCognitive"
+        };
+
         if (string.IsNullOrWhiteSpace(text))
-            return;
+            return timing;
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var voice = ResolveVoice(languageOrLocale);
+            timing.VoiceName = voice;
+
             if (!string.IsNullOrWhiteSpace(voice))
             {
                 _synthesizer.Properties.SetProperty(PropertyId.SpeechServiceConnection_SynthVoice, voice);
             }
 
+            // Azure Cognitive Services TTS is batch-based: the SDK synthesizes and plays in one call.
+            // We measure the total time as "network" time since synthesis happens server-side.
+            var networkSw = Stopwatch.StartNew();
+
             using var result = await _synthesizer.SpeakTextAsync(text).ConfigureAwait(false);
 
+            networkSw.Stop();
+
+            // For batch TTS, network time includes synthesis + download + playback.
+            // We report it as network time; playback delay is ~0 since SDK handles it.
+            timing.NetworkMs = (int)networkSw.ElapsedMilliseconds;
+            timing.PlaybackStartDelayMs = 0; // SDK handles playback internally
+
             if (result.Reason == ResultReason.SynthesizingAudioCompleted)
-                return;
+                return timing;
 
             if (result.Reason == ResultReason.Canceled)
             {
